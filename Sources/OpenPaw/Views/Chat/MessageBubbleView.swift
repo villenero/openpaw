@@ -3,6 +3,7 @@ import SwiftUI
 struct MessageBubbleView: View {
     let role: String
     let content: String
+    var media: [MediaItem] = []
 
     private var isUser: Bool { role == "user" }
 
@@ -15,12 +16,20 @@ struct MessageBubbleView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
 
-                Group {
-                    if isUser {
-                        Text(markdownContent)
-                            .textSelection(.enabled)
-                    } else {
-                        MarkdownView(source: content)
+                VStack(alignment: .leading, spacing: 8) {
+                    // Media before text
+                    if !media.isEmpty {
+                        MediaContentView(media: media)
+                    }
+
+                    // Text content
+                    if !content.isEmpty {
+                        if isUser {
+                            Text(markdownContent)
+                                .textSelection(.enabled)
+                        } else {
+                            MarkdownView(source: content)
+                        }
                     }
                 }
                 .padding(.horizontal, 12)

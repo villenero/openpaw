@@ -5,6 +5,7 @@ import SwiftData
 @MainActor
 final class ChatViewModel {
     var streamingContent: String = ""
+    var streamingMedia: [MediaItem] = []
     var isStreaming: Bool = false
     var isAgentProcessing: Bool = false
     var error: String?
@@ -38,6 +39,7 @@ final class ChatViewModel {
         isStreaming = true
         isAgentProcessing = true
         streamingContent = ""
+        streamingMedia = []
 
         // Listen for chat and agent events
         gateway.clearEventHandlers()
@@ -88,10 +90,10 @@ final class ChatViewModel {
 
                 for item in messagesArray {
                     guard let dict = item as? [String: Any],
-                          let role = dict["role"] as? String,
-                          let content = dict["content"] as? String else { continue }
+                          let role = dict["role"] as? String else { continue }
 
-                    let msg = Message(role: role, content: content)
+                    let parsed = extractContent(from: dict)
+                    let msg = Message(role: role, content: parsed.text, media: parsed.media)
                     msg.conversation = conversation
                     conversation.messages.append(msg)
                 }
@@ -111,7 +113,9 @@ final class ChatViewModel {
         case "delta", "final":
             isAgentProcessing = false
             if let message = payload["message"]?.dictValue {
-                streamingContent = extractText(from: message)
+                let parsed = extractContent(from: message)
+                streamingContent = parsed.text
+                streamingMedia = parsed.media
             }
             if state == "final" {
                 finishStreaming(in: conversation)
@@ -143,37 +147,90 @@ final class ChatViewModel {
         }
     }
 
-    private func extractText(from message: [String: Any]) -> String {
+    private func extractContent(from message: [String: Any]) -> ParsedContent {
+        var result = ParsedContent()
+
         if let contentArray = message["content"] as? [[String: Any]] {
-            return contentArray
-                .filter { ($0["type"] as? String) == "text" }
-                .compactMap { $0["text"] as? String }
-                .joined()
+            for part in contentArray {
+                let type = part["type"] as? String
+                switch type {
+                case "text":
+                    if let text = part["text"] as? String {
+                        result.text += text
+                    }
+                case "image":
+                    if let source = part["source"] as? [String: Any],
+                       (source["type"] as? String) == "base64",
+                       let mediaType = source["media_type"] as? String,
+                       let dataStr = source["data"] as? String,
+                       let data = Data(base64Encoded: dataStr) {
+                        result.media.append(.imageBase64(data: data, mediaType: mediaType))
+                    } else if let source = part["source"] as? [String: Any],
+                              (source["type"] as? String) == "url",
+                              let urlStr = source["url"] as? String,
+                              let url = URL(string: urlStr) {
+                        let alt = part["alt"] as? String ?? ""
+                        result.media.append(.imageURL(url: url, alt: alt))
+                    }
+                case "audio":
+                    if let source = part["source"] as? [String: Any],
+                       (source["type"] as? String) == "base64",
+                       let mediaType = source["media_type"] as? String,
+                       let dataStr = source["data"] as? String,
+                       let data = Data(base64Encoded: dataStr) {
+                        result.media.append(.audioBase64(data: data, mediaType: mediaType))
+                    } else if let source = part["source"] as? [String: Any],
+                              (source["type"] as? String) == "url",
+                              let urlStr = source["url"] as? String,
+                              let url = URL(string: urlStr) {
+                        result.media.append(.audioURL(url: url))
+                    }
+                default:
+                    break
+                }
+            }
+            return result
         }
+
         if let contentArray = message["content"] as? [Any] {
-            return contentArray.compactMap { item -> String? in
-                guard let dict = item as? [String: Any],
-                      (dict["type"] as? String) == "text" else { return nil }
-                return dict["text"] as? String
-            }.joined()
+            for item in contentArray {
+                guard let dict = item as? [String: Any] else { continue }
+                let type = dict["type"] as? String
+                if type == "text", let text = dict["text"] as? String {
+                    result.text += text
+                }
+                // Same media extraction for loosely-typed arrays
+                if type == "image", let source = dict["source"] as? [String: Any] {
+                    if (source["type"] as? String) == "base64",
+                       let mediaType = source["media_type"] as? String,
+                       let dataStr = source["data"] as? String,
+                       let data = Data(base64Encoded: dataStr) {
+                        result.media.append(.imageBase64(data: data, mediaType: mediaType))
+                    }
+                }
+            }
+            return result
         }
+
         if let contentString = message["content"] as? String {
-            return contentString
+            result.text = contentString
         }
-        return ""
+
+        return result
     }
 
     private func finishStreaming(in conversation: Conversation?) {
         guard isStreaming else { return }
 
-        if let conversation, !streamingContent.isEmpty {
-            let assistantMsg = Message(role: "assistant", content: streamingContent)
+        let hasContent = !streamingContent.isEmpty || !streamingMedia.isEmpty
+        if let conversation, hasContent {
+            let assistantMsg = Message(role: "assistant", content: streamingContent, media: streamingMedia)
             assistantMsg.conversation = conversation
             conversation.messages.append(assistantMsg)
             conversation.updatedAt = .now
 
             // Auto-title
-            if conversation.title == "New Chat" {
+            if conversation.title == "New Chat" && !streamingContent.isEmpty {
                 let preview = streamingContent.prefix(60)
                 let end = preview.lastIndex(of: " ") ?? preview.endIndex
                 conversation.title = String(preview[preview.startIndex..<end])
@@ -186,6 +243,7 @@ final class ChatViewModel {
         isStreaming = false
         isAgentProcessing = false
         streamingContent = ""
+        streamingMedia = []
         gateway.clearEventHandlers()
     }
 }

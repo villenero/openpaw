@@ -16,8 +16,7 @@ struct MarkdownView: View {
     private func blockView(_ block: MarkdownBlock) -> some View {
         switch block {
         case .paragraph(let text):
-            Text(inlineMarkdown(text))
-                .textSelection(.enabled)
+            inlineContentView(text)
 
         case .heading(let level, let text):
             Text(inlineMarkdown(text))
@@ -31,11 +30,22 @@ struct MarkdownView: View {
         case .unorderedList(let items):
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\u{2022}")
-                            .foregroundStyle(.secondary)
-                        Text(inlineMarkdown(item))
-                            .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 4) {
+                        let segments = splitInlineImages(item)
+                        ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                            switch seg {
+                            case .text(let t):
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text("\u{2022}")
+                                        .foregroundStyle(.secondary)
+                                    Text(inlineMarkdown(t))
+                                        .textSelection(.enabled)
+                                }
+                            case .image(let alt, let url):
+                                ImageThumbnailView(item: .imageURL(url: url, alt: alt))
+                                    .padding(.leading, 14)
+                            }
+                        }
                     }
                 }
             }
@@ -44,12 +54,25 @@ struct MarkdownView: View {
         case .orderedList(let items):
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(idx + 1).")
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        Text(inlineMarkdown(item))
-                            .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 4) {
+                        let segments = splitInlineImages(item)
+                        ForEach(Array(segments.enumerated()), id: \.offset) { segIdx, seg in
+                            switch seg {
+                            case .text(let t):
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    if segIdx == 0 {
+                                        Text("\(idx + 1).")
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                    }
+                                    Text(inlineMarkdown(t))
+                                        .textSelection(.enabled)
+                                }
+                            case .image(let alt, let url):
+                                ImageThumbnailView(item: .imageURL(url: url, alt: alt))
+                                    .padding(.leading, 20)
+                            }
+                        }
                     }
                 }
             }
@@ -63,6 +86,92 @@ struct MarkdownView: View {
 
         case .thematicBreak:
             Divider()
+
+        case .image(let alt, let url):
+            ImageThumbnailView(item: .imageURL(url: url, alt: alt))
+        }
+    }
+
+    // MARK: - Inline Image Splitting
+
+    private enum InlineSegment {
+        case text(String)
+        case image(alt: String, url: URL)
+    }
+
+    /// Split text that may contain `![alt](url)` into text and image segments.
+    private func splitInlineImages(_ text: String) -> [InlineSegment] {
+        var segments: [InlineSegment] = []
+        var remaining = text[text.startIndex..<text.endIndex]
+
+        while let bangIdx = remaining.range(of: "![") {
+            // Text before the image
+            let before = remaining[remaining.startIndex..<bangIdx.lowerBound]
+            if !before.isEmpty {
+                segments.append(.text(String(before)))
+            }
+
+            let afterBang = bangIdx.upperBound
+            // Find closing ]
+            guard let closeBracket = remaining[afterBang...].firstIndex(of: "]") else {
+                segments.append(.text(String(remaining[bangIdx.lowerBound...])))
+                return segments
+            }
+            let afterBracket = remaining.index(after: closeBracket)
+            // Must be followed by (
+            guard afterBracket < remaining.endIndex, remaining[afterBracket] == "(" else {
+                // Not a valid image, treat as text up to after ![
+                segments.append(.text(String(remaining[bangIdx.lowerBound..<afterBang])))
+                remaining = remaining[afterBang...]
+                continue
+            }
+            // Find closing )
+            let afterParen = remaining.index(after: afterBracket)
+            guard let closeParen = remaining[afterParen...].firstIndex(of: ")") else {
+                segments.append(.text(String(remaining[bangIdx.lowerBound...])))
+                return segments
+            }
+
+            let alt = String(remaining[afterBang..<closeBracket])
+            let urlStr = String(remaining[afterParen..<closeParen])
+            if let url = URL(string: urlStr) {
+                segments.append(.image(alt: alt, url: url))
+            } else {
+                // Invalid URL — keep as text
+                segments.append(.text(String(remaining[bangIdx.lowerBound...closeParen])))
+            }
+            remaining = remaining[remaining.index(after: closeParen)...]
+        }
+
+        if !remaining.isEmpty {
+            segments.append(.text(String(remaining)))
+        }
+
+        return segments
+    }
+
+    /// Render text that may contain inline images as a VStack of text and image segments.
+    @ViewBuilder
+    private func inlineContentView(_ text: String) -> some View {
+        let segments = splitInlineImages(text)
+        if segments.count == 1, case .text(let t) = segments[0] {
+            // Fast path: no images, just text
+            Text(inlineMarkdown(t))
+                .textSelection(.enabled)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                    switch seg {
+                    case .text(let t):
+                        if !t.trimmingCharacters(in: .whitespaces).isEmpty {
+                            Text(inlineMarkdown(t))
+                                .textSelection(.enabled)
+                        }
+                    case .image(let alt, let url):
+                        ImageThumbnailView(item: .imageURL(url: url, alt: alt))
+                    }
+                }
+            }
         }
     }
 
@@ -300,6 +409,7 @@ private enum MarkdownBlock {
     case blockquote(String)
     case table(ParsedTable)
     case thematicBreak
+    case image(alt: String, url: URL)
 }
 
 extension MarkdownView {
@@ -386,6 +496,13 @@ extension MarkdownView {
                 continue
             }
 
+            // Standalone image: ![alt](url)
+            if let imageBlock = parseImageLine(trimmed) {
+                blocks.append(imageBlock)
+                i += 1
+                continue
+            }
+
             // Empty line — skip
             if trimmed.isEmpty {
                 i += 1
@@ -404,6 +521,7 @@ extension MarkdownView {
                     || parseOrderedItem(lt) != nil
                     || lt.hasPrefix(">")
                     || isThematicBreak(lt)
+                    || parseImageLine(lt) != nil
                     || (lt.contains("|") && i + 1 < lines.count && isTableSeparator(lines[i + 1].trimmingCharacters(in: .whitespaces))) {
                     break
                 }
@@ -416,6 +534,20 @@ extension MarkdownView {
         }
 
         return blocks
+    }
+
+    /// Parse a standalone image line: ![alt](url)
+    private func parseImageLine(_ line: String) -> MarkdownBlock? {
+        guard line.hasPrefix("![") else { return nil }
+        guard let closeBracket = line.firstIndex(of: "]"),
+              closeBracket < line.endIndex else { return nil }
+        let afterBracket = line.index(after: closeBracket)
+        guard afterBracket < line.endIndex, line[afterBracket] == "(" else { return nil }
+        guard let closeParen = line.lastIndex(of: ")") else { return nil }
+        let alt = String(line[line.index(line.startIndex, offsetBy: 2)..<closeBracket])
+        let urlStr = String(line[line.index(after: afterBracket)..<closeParen])
+        guard let url = URL(string: urlStr) else { return nil }
+        return .image(alt: alt, url: url)
     }
 
     private func parseHeading(_ line: String) -> MarkdownBlock? {

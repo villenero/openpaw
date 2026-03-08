@@ -41,9 +41,17 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" << 'PLIST'
     <true/>
     <key>LSUIElement</key>
     <false/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
 </dict>
 </plist>
 PLIST
+
+# Codesign with entitlements
+codesign --force --sign - --entitlements OpenPaw.entitlements "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 
 echo "Built: ${APP_BUNDLE}"
 open "$APP_BUNDLE"

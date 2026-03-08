@@ -41,13 +41,14 @@ struct ChatView: View {
                     ForEach(conversation.sortedMessages) { message in
                         MessageBubbleView(
                             role: message.role,
-                            content: message.content
+                            content: message.content,
+                            media: message.mediaItems
                         )
                         .id(message.id)
                     }
 
                     // Typing indicator
-                    if let vm = viewModel, vm.isAgentProcessing && vm.streamingContent.isEmpty {
+                    if let vm = viewModel, vm.isAgentProcessing && vm.streamingContent.isEmpty && vm.streamingMedia.isEmpty {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Assistant")
@@ -65,10 +66,12 @@ struct ChatView: View {
                     }
 
                     // Streaming bubble
-                    if let vm = viewModel, vm.isStreaming, !vm.streamingContent.isEmpty {
+                    if let vm = viewModel, vm.isStreaming,
+                       (!vm.streamingContent.isEmpty || !vm.streamingMedia.isEmpty) {
                         MessageBubbleView(
                             role: "assistant",
-                            content: vm.streamingContent
+                            content: vm.streamingContent,
+                            media: vm.streamingMedia
                         )
                         .id("streaming")
                     }
