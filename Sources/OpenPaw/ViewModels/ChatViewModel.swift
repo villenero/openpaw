@@ -6,6 +6,7 @@ import SwiftData
 final class ChatViewModel {
     var streamingContent: String = ""
     var isStreaming: Bool = false
+    var isAgentProcessing: Bool = false
     var error: String?
 
     private let gateway: GatewayService
@@ -35,14 +36,21 @@ final class ChatViewModel {
 
         // Stream response
         isStreaming = true
+        isAgentProcessing = true
         streamingContent = ""
 
-        // Listen for chat events
+        // Listen for chat and agent events
         gateway.clearEventHandlers()
         gateway.onEvent("chat-stream") { [weak self] (frame: IncomingFrame) in
             guard frame.event == "chat" else { return }
             Task { @MainActor in
                 self?.handleChatEvent(frame, conversation: conversation)
+            }
+        }
+        gateway.onEvent("agent-lifecycle") { [weak self] (frame: IncomingFrame) in
+            guard frame.event == "agent" else { return }
+            Task { @MainActor in
+                self?.handleAgentEvent(frame)
             }
         }
 
@@ -101,9 +109,7 @@ final class ChatViewModel {
 
         switch state {
         case "delta", "final":
-            // message.content is an array of {type:"text", text:"..."} or a plain string
-            // "delta" = full accumulated text so far (REPLACE, don't append)
-            // "final" = complete response
+            isAgentProcessing = false
             if let message = payload["message"]?.dictValue {
                 streamingContent = extractText(from: message)
             }
@@ -121,6 +127,19 @@ final class ChatViewModel {
 
         default:
             break
+        }
+    }
+
+    private func handleAgentEvent(_ frame: IncomingFrame) {
+        guard let payload = frame.payload,
+              payload["stream"]?.stringValue == "lifecycle",
+              let data = payload["data"]?.dictValue else { return }
+
+        let phase = data["phase"] as? String
+        if phase == "start" {
+            isAgentProcessing = true
+        } else if phase == "end" || phase == "error" {
+            isAgentProcessing = false
         }
     }
 
@@ -165,6 +184,7 @@ final class ChatViewModel {
         }
 
         isStreaming = false
+        isAgentProcessing = false
         streamingContent = ""
         gateway.clearEventHandlers()
     }

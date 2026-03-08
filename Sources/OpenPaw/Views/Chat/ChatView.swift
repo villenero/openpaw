@@ -46,11 +46,29 @@ struct ChatView: View {
                         .id(message.id)
                     }
 
+                    // Typing indicator
+                    if let vm = viewModel, vm.isAgentProcessing && vm.streamingContent.isEmpty {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Assistant")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                TypingIndicatorView()
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(Color(.controlBackgroundColor))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            Spacer(minLength: 60)
+                        }
+                        .id("typing")
+                    }
+
                     // Streaming bubble
-                    if let vm = viewModel, vm.isStreaming {
+                    if let vm = viewModel, vm.isStreaming, !vm.streamingContent.isEmpty {
                         MessageBubbleView(
                             role: "assistant",
-                            content: vm.streamingContent.isEmpty ? "…" : vm.streamingContent
+                            content: vm.streamingContent
                         )
                         .id("streaming")
                     }
@@ -84,8 +102,10 @@ struct ChatView: View {
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.15)) {
-            if let vm = viewModel, vm.isStreaming {
+            if let vm = viewModel, vm.isStreaming, !vm.streamingContent.isEmpty {
                 proxy.scrollTo("streaming", anchor: .bottom)
+            } else if let vm = viewModel, vm.isAgentProcessing {
+                proxy.scrollTo("typing", anchor: .bottom)
             } else if let lastMsg = conversation.sortedMessages.last {
                 proxy.scrollTo(lastMsg.id, anchor: .bottom)
             }
