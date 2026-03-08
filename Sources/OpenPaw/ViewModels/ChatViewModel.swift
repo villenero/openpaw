@@ -10,6 +10,10 @@ final class ChatViewModel {
     var isAgentProcessing: Bool = false
     var error: String?
 
+    // Typewriter state
+    private var targetText: String = ""
+    private var typewriterTask: Task<Void, Never>?
+
     private let gateway: GatewayService
     private let modelContext: ModelContext
 
@@ -40,6 +44,9 @@ final class ChatViewModel {
         isAgentProcessing = true
         streamingContent = ""
         streamingMedia = []
+        targetText = ""
+        typewriterTask?.cancel()
+        typewriterTask = nil
 
         // Listen for chat and agent events
         gateway.clearEventHandlers()
@@ -110,16 +117,26 @@ final class ChatViewModel {
         let state = payload["state"]?.stringValue
 
         switch state {
-        case "delta", "final":
+        case "delta":
             isAgentProcessing = false
             if let message = payload["message"]?.dictValue {
                 let parsed = extractContent(from: message)
-                streamingContent = parsed.text
                 streamingMedia = parsed.media
+                revealText(parsed.text)
             }
-            if state == "final" {
-                finishStreaming(in: conversation)
+
+        case "final":
+            isAgentProcessing = false
+            if let message = payload["message"]?.dictValue {
+                let parsed = extractContent(from: message)
+                streamingMedia = parsed.media
+                // Cancel typewriter and show final text immediately
+                typewriterTask?.cancel()
+                typewriterTask = nil
+                streamingContent = parsed.text
+                targetText = parsed.text
             }
+            finishStreaming(in: conversation)
 
         case "aborted":
             finishStreaming(in: conversation)
@@ -144,6 +161,51 @@ final class ChatViewModel {
             isAgentProcessing = true
         } else if phase == "end" || phase == "error" {
             isAgentProcessing = false
+        }
+    }
+
+    // MARK: - Typewriter Effect
+
+    private func revealText(_ newText: String) {
+        targetText = newText
+
+        // How many new chars beyond what's already displayed
+        let newChars = newText.count - streamingContent.count
+
+        // If new delta arrived while typewriter is running, cancel it and jump to current target
+        // then start revealing from there
+        if let task = typewriterTask {
+            task.cancel()
+            typewriterTask = nil
+            // Jump to current state minus new chars, so we only reveal truly new content
+            streamingContent = String(newText.prefix(newText.count - max(newChars, 0)))
+        }
+
+        // Small delta (<20 chars): show immediately
+        if newChars < 20 {
+            streamingContent = newText
+            return
+        }
+
+        // Reveal new characters in chunks
+        let chunkSize = 8
+        let delayNs: UInt64 = 15_000_000 // 15ms
+
+        typewriterTask = Task { [weak self] in
+            guard let self else { return }
+            let startIndex = self.streamingContent.count
+
+            var pos = startIndex
+            while pos < newText.count {
+                if Task.isCancelled { return }
+                let end = min(pos + chunkSize, newText.count)
+                self.streamingContent = String(newText.prefix(end))
+                pos = end
+                if pos < newText.count {
+                    try? await Task.sleep(nanoseconds: delayNs)
+                }
+            }
+            self.typewriterTask = nil
         }
     }
 
@@ -222,6 +284,13 @@ final class ChatViewModel {
     private func finishStreaming(in conversation: Conversation?) {
         guard isStreaming else { return }
 
+        // Cancel typewriter and show final text
+        typewriterTask?.cancel()
+        typewriterTask = nil
+        if !targetText.isEmpty {
+            streamingContent = targetText
+        }
+
         let hasContent = !streamingContent.isEmpty || !streamingMedia.isEmpty
         if let conversation, hasContent {
             let assistantMsg = Message(role: "assistant", content: streamingContent, media: streamingMedia)
@@ -244,6 +313,7 @@ final class ChatViewModel {
         isAgentProcessing = false
         streamingContent = ""
         streamingMedia = []
+        targetText = ""
         gateway.clearEventHandlers()
     }
 }
