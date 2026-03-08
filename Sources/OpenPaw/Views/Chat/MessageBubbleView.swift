@@ -4,6 +4,7 @@ struct MessageBubbleView: View {
     let role: String
     let content: String
     var media: [MediaItem] = []
+    var isStreamingFade: Bool = false
 
     private var isUser: Bool { role == "user" }
 
@@ -27,6 +28,8 @@ struct MessageBubbleView: View {
                         if isUser {
                             Text(markdownContent)
                                 .textSelection(.enabled)
+                        } else if isStreamingFade {
+                            TypewriterTextView(text: content)
                         } else {
                             MarkdownView(source: content)
                         }

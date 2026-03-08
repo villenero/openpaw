@@ -48,7 +48,7 @@ struct ChatView: View {
                     }
 
                     // Typing indicator
-                    if let vm = viewModel, vm.isAgentProcessing && vm.streamingContent.isEmpty && vm.streamingMedia.isEmpty {
+                    if let vm = viewModel, vm.isAgentProcessing && vm.displayedContent.isEmpty && vm.streamingMedia.isEmpty {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Assistant")
@@ -67,11 +67,12 @@ struct ChatView: View {
 
                     // Streaming bubble
                     if let vm = viewModel, vm.isStreaming,
-                       (!vm.streamingContent.isEmpty || !vm.streamingMedia.isEmpty) {
+                       (!vm.displayedContent.isEmpty || !vm.streamingMedia.isEmpty) {
                         MessageBubbleView(
                             role: "assistant",
-                            content: vm.streamingContent,
-                            media: vm.streamingMedia
+                            content: vm.displayedContent,
+                            media: vm.streamingMedia,
+                            isStreamingFade: !vm.isStreamingFinalized
                         )
                         .id("streaming")
                     }
@@ -97,7 +98,7 @@ struct ChatView: View {
             .onChange(of: conversation.messages.count) {
                 scrollToBottom(proxy: proxy)
             }
-            .onChange(of: viewModel?.streamingContent) {
+            .onChange(of: viewModel?.displayedContent) {
                 scrollToBottom(proxy: proxy)
             }
         }
@@ -105,7 +106,7 @@ struct ChatView: View {
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.15)) {
-            if let vm = viewModel, vm.isStreaming, !vm.streamingContent.isEmpty {
+            if let vm = viewModel, vm.isStreaming, !vm.displayedContent.isEmpty {
                 proxy.scrollTo("streaming", anchor: .bottom)
             } else if let vm = viewModel, vm.isAgentProcessing {
                 proxy.scrollTo("typing", anchor: .bottom)

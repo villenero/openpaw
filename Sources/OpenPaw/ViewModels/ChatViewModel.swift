@@ -4,14 +4,17 @@ import SwiftData
 @Observable
 @MainActor
 final class ChatViewModel {
-    var streamingContent: String = ""
+    // The UI reads displayedContent (typewriter-buffered) instead of raw gateway text
+    var displayedContent: String { String(receivedContent.prefix(displayedCharCount)) }
     var streamingMedia: [MediaItem] = []
     var isStreaming: Bool = false
+    var isStreamingFinalized: Bool = false
     var isAgentProcessing: Bool = false
     var error: String?
 
-    // Typewriter state
-    private var targetText: String = ""
+    // Typewriter buffer state
+    private var receivedContent: String = ""
+    private var displayedCharCount: Int = 0
     private var typewriterTask: Task<Void, Never>?
 
     private let gateway: GatewayService
@@ -41,10 +44,11 @@ final class ChatViewModel {
 
         // Stream response
         isStreaming = true
+        isStreamingFinalized = false
         isAgentProcessing = true
-        streamingContent = ""
+        receivedContent = ""
+        displayedCharCount = 0
         streamingMedia = []
-        targetText = ""
         typewriterTask?.cancel()
         typewriterTask = nil
 
@@ -122,7 +126,8 @@ final class ChatViewModel {
             if let message = payload["message"]?.dictValue {
                 let parsed = extractContent(from: message)
                 streamingMedia = parsed.media
-                revealText(parsed.text)
+                receivedContent = parsed.text
+                startTypewriterIfNeeded()
             }
 
         case "final":
@@ -130,12 +135,13 @@ final class ChatViewModel {
             if let message = payload["message"]?.dictValue {
                 let parsed = extractContent(from: message)
                 streamingMedia = parsed.media
-                // Cancel typewriter and show final text immediately
-                typewriterTask?.cancel()
-                typewriterTask = nil
-                streamingContent = parsed.text
-                targetText = parsed.text
+                receivedContent = parsed.text
             }
+            // Cancel typewriter, show all text immediately
+            typewriterTask?.cancel()
+            typewriterTask = nil
+            displayedCharCount = receivedContent.count
+            isStreamingFinalized = true
             finishStreaming(in: conversation)
 
         case "aborted":
@@ -164,48 +170,41 @@ final class ChatViewModel {
         }
     }
 
-    // MARK: - Typewriter Effect
+    // MARK: - Typewriter Buffer
 
-    private func revealText(_ newText: String) {
-        targetText = newText
-
-        // How many new chars beyond what's already displayed
-        let newChars = newText.count - streamingContent.count
-
-        // If new delta arrived while typewriter is running, cancel it and jump to current target
-        // then start revealing from there
-        if let task = typewriterTask {
-            task.cancel()
-            typewriterTask = nil
-            // Jump to current state minus new chars, so we only reveal truly new content
-            streamingContent = String(newText.prefix(newText.count - max(newChars, 0)))
-        }
-
-        // Small delta (<20 chars): show immediately
-        if newChars < 20 {
-            streamingContent = newText
-            return
-        }
-
-        // Reveal new characters in chunks
-        let chunkSize = 8
-        let delayNs: UInt64 = 15_000_000 // 15ms
+    private func startTypewriterIfNeeded() {
+        guard typewriterTask == nil else { return } // already running
 
         typewriterTask = Task { [weak self] in
-            guard let self else { return }
-            let startIndex = self.streamingContent.count
-
-            var pos = startIndex
-            while pos < newText.count {
-                if Task.isCancelled { return }
-                let end = min(pos + chunkSize, newText.count)
-                self.streamingContent = String(newText.prefix(end))
-                pos = end
-                if pos < newText.count {
-                    try? await Task.sleep(nanoseconds: delayNs)
+            while let self, !Task.isCancelled {
+                let target = self.receivedContent.count
+                guard self.displayedCharCount < target else {
+                    // Caught up — wait for more content
+                    self.typewriterTask = nil
+                    return
                 }
+
+                let buffered = target - self.displayedCharCount
+                let delayMs: UInt64
+                let step: Int
+
+                if buffered > 100 {
+                    delayMs = 2
+                    step = 3
+                } else if buffered > 50 {
+                    delayMs = 2
+                    step = 1
+                } else if buffered > 20 {
+                    delayMs = 8
+                    step = 1
+                } else {
+                    delayMs = 15
+                    step = 1
+                }
+
+                self.displayedCharCount = min(self.displayedCharCount + step, target)
+                try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
             }
-            self.typewriterTask = nil
         }
     }
 
@@ -261,7 +260,6 @@ final class ChatViewModel {
                 if type == "text", let text = dict["text"] as? String {
                     result.text += text
                 }
-                // Same media extraction for loosely-typed arrays
                 if type == "image", let source = dict["source"] as? [String: Any] {
                     if (source["type"] as? String) == "base64",
                        let mediaType = source["media_type"] as? String,
@@ -287,20 +285,19 @@ final class ChatViewModel {
         // Cancel typewriter and show final text
         typewriterTask?.cancel()
         typewriterTask = nil
-        if !targetText.isEmpty {
-            streamingContent = targetText
-        }
+        displayedCharCount = receivedContent.count
 
-        let hasContent = !streamingContent.isEmpty || !streamingMedia.isEmpty
+        let finalText = receivedContent
+        let hasContent = !finalText.isEmpty || !streamingMedia.isEmpty
         if let conversation, hasContent {
-            let assistantMsg = Message(role: "assistant", content: streamingContent, media: streamingMedia)
+            let assistantMsg = Message(role: "assistant", content: finalText, media: streamingMedia)
             assistantMsg.conversation = conversation
             conversation.messages.append(assistantMsg)
             conversation.updatedAt = .now
 
             // Auto-title
-            if conversation.title == "New Chat" && !streamingContent.isEmpty {
-                let preview = streamingContent.prefix(60)
+            if conversation.title == "New Chat" && !finalText.isEmpty {
+                let preview = finalText.prefix(60)
                 let end = preview.lastIndex(of: " ") ?? preview.endIndex
                 conversation.title = String(preview[preview.startIndex..<end])
                 if preview.count >= 60 { conversation.title += "…" }
@@ -311,9 +308,9 @@ final class ChatViewModel {
 
         isStreaming = false
         isAgentProcessing = false
-        streamingContent = ""
+        receivedContent = ""
+        displayedCharCount = 0
         streamingMedia = []
-        targetText = ""
         gateway.clearEventHandlers()
     }
 }
