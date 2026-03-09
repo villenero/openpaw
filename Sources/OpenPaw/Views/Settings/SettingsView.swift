@@ -5,9 +5,42 @@ struct SettingsView: View {
 
     @AppStorage("serverURL") private var savedURL: String = "ws://127.0.0.1:18789"
     @AppStorage("gatewayToken") private var savedToken: String = ""
+    @AppStorage("enterSendsMessage") private var enterSendsMessage: Bool = true
+    @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
+    @AppStorage("assistantBubbleColor") private var assistantBubbleHex: String = BubbleColors.defaultAssistantHex
+
+    @State private var userColor: Color = BubbleColors.defaultUser
+    @State private var assistantColor: Color = BubbleColors.defaultAssistant
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                ColorPicker("User bubble", selection: $userColor, supportsOpacity: false)
+                    .onChange(of: userColor) {
+                        userBubbleHex = userColor.toHex()
+                    }
+                ColorPicker("Assistant bubble", selection: $assistantColor, supportsOpacity: false)
+                    .onChange(of: assistantColor) {
+                        assistantBubbleHex = assistantColor.toHex()
+                    }
+                Button("Reset to defaults") {
+                    userColor = BubbleColors.defaultUser
+                    assistantColor = BubbleColors.defaultAssistant
+                    userBubbleHex = BubbleColors.defaultUserHex
+                    assistantBubbleHex = BubbleColors.defaultAssistantHex
+                }
+                .font(.caption)
+            }
+
+            Section("Input") {
+                Toggle("Enter sends message", isOn: $enterSendsMessage)
+                Text(enterSendsMessage
+                     ? "Press Enter to send. Shift+Enter for new line."
+                     : "Press Enter for new line. Click the send button to send.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Server") {
                 TextField("WebSocket URL", text: $savedURL)
                     .textFieldStyle(.roundedBorder)
@@ -69,6 +102,8 @@ struct SettingsView: View {
         .onAppear {
             gateway.serverURL = savedURL
             gateway.gatewayToken = savedToken
+            userColor = Color(hex: userBubbleHex) ?? BubbleColors.defaultUser
+            assistantColor = Color(hex: assistantBubbleHex) ?? BubbleColors.defaultAssistant
         }
     }
 }

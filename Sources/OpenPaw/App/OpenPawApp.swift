@@ -34,6 +34,25 @@ struct OpenPawApp: App {
                 }
         }
         .modelContainer(container)
+        .commands {
+            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .appInfo) {
+                Button("About OpenPaw") {
+                    NSApp.orderFrontStandardAboutPanel(options: [
+                        .applicationName: "OpenPaw",
+                        .applicationVersion: "1.0",
+                        .version: "Build: \(BuildInfo.timestamp)",
+                        .credits: NSAttributedString(
+                            string: "Built: \(BuildInfo.timestamp)",
+                            attributes: [
+                                .font: NSFont.systemFont(ofSize: 11),
+                                .foregroundColor: NSColor.secondaryLabelColor
+                            ]
+                        )
+                    ])
+                }
+            }
+        }
 
         Settings {
             SettingsView(gateway: gateway)

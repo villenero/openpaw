@@ -6,6 +6,7 @@ struct MessageInputView: View {
     let onSend: (String) -> Void
     let onStop: () -> Void
 
+    @AppStorage("enterSendsMessage") private var enterSendsMessage: Bool = true
     @State private var inputText: String = ""
     @FocusState private var isFocused: Bool
 
@@ -35,7 +36,7 @@ struct MessageInputView: View {
                             insertEmoji(emojiResults[emojiSelectedIndex])
                             return .handled
                         }
-                        if press.modifiers.isEmpty {
+                        if enterSendsMessage && press.modifiers.isEmpty {
                             sendMessage()
                             return .handled
                         }

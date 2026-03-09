@@ -188,13 +188,19 @@ final class ChatViewModel {
                 let delayMs: UInt64
                 let step: Int
 
-                if buffered > 100 {
+                // Speed is king: large buffers flush almost instantly,
+                // only small buffers get the cosmetic typewriter pacing.
+                if buffered > 200 {
+                    // Dump everything except the fade window (20 chars) in one go
+                    self.displayedCharCount = target - 20
+                    continue
+                } else if buffered > 80 {
+                    delayMs = 1
+                    step = buffered / 4  // flush in ~4 ticks
+                } else if buffered > 30 {
                     delayMs = 2
                     step = 3
-                } else if buffered > 50 {
-                    delayMs = 2
-                    step = 1
-                } else if buffered > 20 {
+                } else if buffered > 10 {
                     delayMs = 8
                     step = 1
                 } else {

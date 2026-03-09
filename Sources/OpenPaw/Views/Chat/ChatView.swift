@@ -37,7 +37,7 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
                     ForEach(conversation.sortedMessages) { message in
                         MessageBubbleView(
                             role: message.role,
@@ -93,25 +93,43 @@ struct ChatView: View {
                 .padding()
             }
             .onAppear {
-                scrollToBottom(proxy: proxy)
+                scrollToBottom(proxy: proxy, animated: false)
+            }
+            .onChange(of: conversation) {
+                // Delay to next run loop so VStack has rendered the new messages
+                DispatchQueue.main.async {
+                    scrollToBottom(proxy: proxy, animated: false)
+                }
             }
             .onChange(of: conversation.messages.count) {
-                scrollToBottom(proxy: proxy)
+                scrollToBottom(proxy: proxy, animated: true)
             }
             .onChange(of: viewModel?.displayedContent) {
-                scrollToBottom(proxy: proxy)
+                scrollToBottom(proxy: proxy, animated: true)
             }
         }
     }
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.15)) {
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
+        let target: AnyHashable? = {
             if let vm = viewModel, vm.isStreaming, !vm.displayedContent.isEmpty {
-                proxy.scrollTo("streaming", anchor: .bottom)
+                return "streaming"
             } else if let vm = viewModel, vm.isAgentProcessing {
-                proxy.scrollTo("typing", anchor: .bottom)
+                return "typing"
             } else if let lastMsg = conversation.sortedMessages.last {
-                proxy.scrollTo(lastMsg.id, anchor: .bottom)
+                return lastMsg.id
+            }
+            return nil
+        }()
+        guard let target else { return }
+
+        if animated {
+            withAnimation(.easeOut(duration: 0.15)) {
+                proxy.scrollTo(target, anchor: .bottom)
+            }
+        } else {
+            withTransaction(Transaction(animation: nil)) {
+                proxy.scrollTo(target, anchor: .bottom)
             }
         }
     }

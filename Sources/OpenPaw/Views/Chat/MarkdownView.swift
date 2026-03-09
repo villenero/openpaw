@@ -4,183 +4,289 @@ import HighlightSwift
 struct MarkdownView: View {
     let source: String
 
+    @State private var renderedItems: [RenderItem] = []
+    @State private var lastSource: String = ""
+
+    private static let highlighter = Highlight()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(parseBlocks().enumerated()), id: \.offset) { _, block in
-                blockView(block)
+            ForEach(Array(renderedItems.enumerated()), id: \.offset) { _, item in
+                renderItemView(item)
+            }
+        }
+        .task(id: source) {
+            // First pass: immediate render without syntax highlighting
+            if source != lastSource {
+                renderedItems = buildRenderItems(from: parseBlocks(), highlightedCode: [:])
+                lastSource = source
+            }
+            // Second pass: apply syntax highlighting to code blocks
+            let blocks = parseBlocks()
+            let highlighted = await highlightCodeBlocks(blocks)
+            if !highlighted.isEmpty {
+                renderedItems = buildRenderItems(from: blocks, highlightedCode: highlighted)
             }
         }
     }
 
+    // MARK: - Render items
+
+    private enum RenderItem {
+        case textRun(NSAttributedString)
+        case image(alt: String, url: URL)
+        case table(ParsedTable)
+    }
+
+    /// Highlight all code blocks concurrently.
+    private func highlightCodeBlocks(_ blocks: [MarkdownBlock]) async -> [Int: NSAttributedString] {
+        var results: [Int: NSAttributedString] = [:]
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let colors: HighlightColors = isDark ? .dark(.atomOne) : .light(.atomOne)
+
+        for (index, block) in blocks.enumerated() {
+            guard case .code(let lang, let code) = block else { continue }
+            do {
+                let mode: HighlightMode = if let lang, !lang.isEmpty {
+                    .languageAlias(lang.lowercased())
+                } else {
+                    .automatic
+                }
+                let result = try await Self.highlighter.request(code, mode: mode, colors: colors)
+                let highlighted = result.attributedText
+                results[index] = NSAttributedString(highlighted)
+            } catch {
+                // Highlighting failed — will use plain monospace fallback
+            }
+        }
+        return results
+    }
+
+    /// Build render items, optionally using pre-highlighted code.
+    private func buildRenderItems(from blocks: [MarkdownBlock], highlightedCode: [Int: NSAttributedString]) -> [RenderItem] {
+        var items: [RenderItem] = []
+        var current = NSMutableAttributedString()
+
+        func flushText() {
+            if current.length > 0 {
+                items.append(.textRun(current.copy() as! NSAttributedString))
+                current = NSMutableAttributedString()
+            }
+        }
+
+        func blockSep() {
+            if current.length > 0 {
+                let sep = NSAttributedString(string: "\n\n", attributes: [
+                    .font: NSFont.systemFont(ofSize: 4),
+                    .foregroundColor: NSColor.clear
+                ])
+                current.append(sep)
+            }
+        }
+
+        let defaultFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let defaultColor = NSColor.labelColor
+        let monoFont = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+
+        let codeBg = NSColor(white: 0.12, alpha: 1.0)
+        let codePadStyle = NSMutableParagraphStyle()
+        codePadStyle.headIndent = 16
+        codePadStyle.firstLineHeadIndent = 16
+        codePadStyle.tailIndent = -16
+        let codeLabelColor = NSColor(white: 0.55, alpha: 1.0)
+
+        for (index, block) in blocks.enumerated() {
+            switch block {
+            case .paragraph(let text):
+                blockSep()
+                current.append(inlineToNS(text, font: defaultFont, color: defaultColor))
+
+            case .heading(let level, let text):
+                blockSep()
+                current.append(inlineToNS(text, font: headingNSFont(level), color: defaultColor))
+
+            case .code(let lang, let code):
+                blockSep()
+
+                // Top padding line
+                current.append(NSAttributedString(string: "\n", attributes: [
+                    .font: NSFont.systemFont(ofSize: 6),
+                    .backgroundColor: codeBg,
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: codePadStyle
+                ]))
+
+                // Language label
+                if let lang, !lang.isEmpty {
+                    let labelStyle = codePadStyle.mutableCopy() as! NSMutableParagraphStyle
+                    labelStyle.paragraphSpacingBefore = 0
+                    current.append(NSAttributedString(string: lang.uppercased() + "\n", attributes: [
+                        .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                        .foregroundColor: codeLabelColor,
+                        .backgroundColor: codeBg,
+                        .paragraphStyle: labelStyle
+                    ]))
+                }
+
+                // Code content
+                let codeAttr: NSMutableAttributedString
+                if let highlighted = highlightedCode[index] {
+                    codeAttr = NSMutableAttributedString(attributedString: highlighted)
+                    let range = NSRange(location: 0, length: codeAttr.length)
+                    codeAttr.enumerateAttribute(.font, in: range, options: []) { value, r, _ in
+                        if value == nil {
+                            codeAttr.addAttribute(.font, value: monoFont, range: r)
+                        } else if let f = value as? NSFont {
+                            let traits = f.fontDescriptor.symbolicTraits
+                            var desc = monoFont.fontDescriptor
+                            desc = desc.withSymbolicTraits(traits)
+                            codeAttr.addAttribute(.font, value: NSFont(descriptor: desc, size: monoFont.pointSize) ?? monoFont, range: r)
+                        }
+                    }
+                    codeAttr.addAttribute(.backgroundColor, value: codeBg, range: range)
+                    codeAttr.addAttribute(.paragraphStyle, value: codePadStyle, range: range)
+                } else {
+                    codeAttr = NSMutableAttributedString(string: code)
+                    let range = NSRange(location: 0, length: codeAttr.length)
+                    codeAttr.addAttribute(.font, value: monoFont, range: range)
+                    codeAttr.addAttribute(.foregroundColor, value: NSColor(white: 0.85, alpha: 1.0), range: range)
+                    codeAttr.addAttribute(.backgroundColor, value: codeBg, range: range)
+                    codeAttr.addAttribute(.paragraphStyle, value: codePadStyle, range: range)
+                }
+                current.append(codeAttr)
+
+                // Bottom padding line
+                current.append(NSAttributedString(string: "\n", attributes: [
+                    .font: NSFont.systemFont(ofSize: 6),
+                    .backgroundColor: codeBg,
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: codePadStyle
+                ]))
+
+            case .unorderedList(let listItems):
+                blockSep()
+                let listStyle = NSMutableParagraphStyle()
+                listStyle.headIndent = 20
+                listStyle.firstLineHeadIndent = 8
+                let tabStop = NSTextTab(textAlignment: .left, location: 20)
+                listStyle.tabStops = [tabStop]
+
+                for (idx, item) in listItems.enumerated() {
+                    if idx > 0 {
+                        current.append(NSAttributedString(string: "\n", attributes: [.font: defaultFont]))
+                    }
+                    let bullet = NSMutableAttributedString(string: "\u{2022}\t", attributes: [
+                        .font: defaultFont,
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                        .paragraphStyle: listStyle
+                    ])
+                    current.append(bullet)
+                    let itemAttr = inlineToNS(item, font: defaultFont, color: defaultColor)
+                    let mutable = NSMutableAttributedString(attributedString: itemAttr)
+                    mutable.addAttribute(.paragraphStyle, value: listStyle, range: NSRange(location: 0, length: mutable.length))
+                    current.append(mutable)
+                }
+
+            case .orderedList(let listItems):
+                blockSep()
+                let listStyle = NSMutableParagraphStyle()
+                listStyle.headIndent = 24
+                listStyle.firstLineHeadIndent = 8
+                let tabStop = NSTextTab(textAlignment: .left, location: 24)
+                listStyle.tabStops = [tabStop]
+
+                for (idx, item) in listItems.enumerated() {
+                    if idx > 0 {
+                        current.append(NSAttributedString(string: "\n", attributes: [.font: defaultFont]))
+                    }
+                    let num = NSMutableAttributedString(string: "\(idx + 1).\t", attributes: [
+                        .font: defaultFont,
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                        .paragraphStyle: listStyle
+                    ])
+                    current.append(num)
+                    let itemAttr = inlineToNS(item, font: defaultFont, color: defaultColor)
+                    let mutable = NSMutableAttributedString(attributedString: itemAttr)
+                    mutable.addAttribute(.paragraphStyle, value: listStyle, range: NSRange(location: 0, length: mutable.length))
+                    current.append(mutable)
+                }
+
+            case .blockquote(let text):
+                blockSep()
+                let quoteStyle = NSMutableParagraphStyle()
+                quoteStyle.headIndent = 16
+                quoteStyle.firstLineHeadIndent = 16
+                let quoteAttr = inlineToNS(text, font: defaultFont, color: NSColor.secondaryLabelColor)
+                let mutable = NSMutableAttributedString(attributedString: quoteAttr)
+                mutable.addAttribute(.paragraphStyle, value: quoteStyle, range: NSRange(location: 0, length: mutable.length))
+                current.append(mutable)
+
+            case .thematicBreak:
+                blockSep()
+                let hr = NSAttributedString(string: "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", attributes: [
+                    .font: defaultFont,
+                    .foregroundColor: NSColor.separatorColor
+                ])
+                current.append(hr)
+
+            case .image(let alt, let url):
+                flushText()
+                items.append(.image(alt: alt, url: url))
+
+            case .table(let t):
+                flushText()
+                items.append(.table(t))
+            }
+        }
+        flushText()
+        return items
+    }
+
     @ViewBuilder
-    private func blockView(_ block: MarkdownBlock) -> some View {
-        switch block {
-        case .paragraph(let text):
-            inlineContentView(text)
-
-        case .heading(let level, let text):
-            Text(inlineMarkdown(text))
-                .font(headingFont(level))
-                .fontWeight(.semibold)
-                .textSelection(.enabled)
-
-        case .code(let lang, let code):
-            CodeBlockView(language: lang, code: code)
-
-        case .unorderedList(let items):
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    VStack(alignment: .leading, spacing: 4) {
-                        let segments = splitInlineImages(item)
-                        ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
-                            switch seg {
-                            case .text(let t):
-                                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    Text("\u{2022}")
-                                        .foregroundStyle(.secondary)
-                                    Text(inlineMarkdown(t))
-                                        .textSelection(.enabled)
-                                }
-                            case .image(let alt, let url):
-                                ImageThumbnailView(item: .imageURL(url: url, alt: alt))
-                                    .padding(.leading, 14)
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.leading, 8)
-
-        case .orderedList(let items):
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                    VStack(alignment: .leading, spacing: 4) {
-                        let segments = splitInlineImages(item)
-                        ForEach(Array(segments.enumerated()), id: \.offset) { segIdx, seg in
-                            switch seg {
-                            case .text(let t):
-                                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    if segIdx == 0 {
-                                        Text("\(idx + 1).")
-                                            .foregroundStyle(.secondary)
-                                            .monospacedDigit()
-                                    }
-                                    Text(inlineMarkdown(t))
-                                        .textSelection(.enabled)
-                                }
-                            case .image(let alt, let url):
-                                ImageThumbnailView(item: .imageURL(url: url, alt: alt))
-                                    .padding(.leading, 20)
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.leading, 8)
-
-        case .blockquote(let text):
-            BlockquoteView(text: text, renderInline: inlineMarkdown)
-
-        case .table(let table):
-            MarkdownTableView(table: table, renderInline: inlineMarkdown)
-
-        case .thematicBreak:
-            Divider()
+    private func renderItemView(_ item: RenderItem) -> some View {
+        switch item {
+        case .textRun(let nsAttr):
+            SelectableTextView(nsAttributedString: nsAttr)
 
         case .image(let alt, let url):
             ImageThumbnailView(item: .imageURL(url: url, alt: alt))
+
+        case .table(let table):
+            MarkdownTableView(table: table, renderInline: inlineMarkdown)
         }
     }
 
-    // MARK: - Inline Image Splitting
+    // MARK: - NSAttributedString helpers
 
-    private enum InlineSegment {
-        case text(String)
-        case image(alt: String, url: URL)
-    }
+    private func inlineToNS(_ text: String, font: NSFont, color: NSColor) -> NSAttributedString {
+        let swiftAttr = inlineMarkdown(text)
+        let nsAttr = NSMutableAttributedString(attributedString: NSAttributedString(swiftAttr))
+        let fullRange = NSRange(location: 0, length: nsAttr.length)
 
-    /// Split text that may contain `![alt](url)` into text and image segments.
-    private func splitInlineImages(_ text: String) -> [InlineSegment] {
-        var segments: [InlineSegment] = []
-        var remaining = text[text.startIndex..<text.endIndex]
-
-        while let bangIdx = remaining.range(of: "![") {
-            // Text before the image
-            let before = remaining[remaining.startIndex..<bangIdx.lowerBound]
-            if !before.isEmpty {
-                segments.append(.text(String(before)))
-            }
-
-            let afterBang = bangIdx.upperBound
-            // Find closing ]
-            guard let closeBracket = remaining[afterBang...].firstIndex(of: "]") else {
-                segments.append(.text(String(remaining[bangIdx.lowerBound...])))
-                return segments
-            }
-            let afterBracket = remaining.index(after: closeBracket)
-            // Must be followed by (
-            guard afterBracket < remaining.endIndex, remaining[afterBracket] == "(" else {
-                // Not a valid image, treat as text up to after ![
-                segments.append(.text(String(remaining[bangIdx.lowerBound..<afterBang])))
-                remaining = remaining[afterBang...]
-                continue
-            }
-            // Find closing )
-            let afterParen = remaining.index(after: afterBracket)
-            guard let closeParen = remaining[afterParen...].firstIndex(of: ")") else {
-                segments.append(.text(String(remaining[bangIdx.lowerBound...])))
-                return segments
-            }
-
-            let alt = String(remaining[afterBang..<closeBracket])
-            let urlStr = String(remaining[afterParen..<closeParen])
-            if let url = URL(string: urlStr) {
-                segments.append(.image(alt: alt, url: url))
-            } else {
-                // Invalid URL — keep as text
-                segments.append(.text(String(remaining[bangIdx.lowerBound...closeParen])))
-            }
-            remaining = remaining[remaining.index(after: closeParen)...]
-        }
-
-        if !remaining.isEmpty {
-            segments.append(.text(String(remaining)))
-        }
-
-        return segments
-    }
-
-    /// Render text that may contain inline images as a VStack of text and image segments.
-    @ViewBuilder
-    private func inlineContentView(_ text: String) -> some View {
-        let segments = splitInlineImages(text)
-        if segments.count == 1, case .text(let t) = segments[0] {
-            // Fast path: no images, just text
-            Text(inlineMarkdown(t))
-                .textSelection(.enabled)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
-                    switch seg {
-                    case .text(let t):
-                        if !t.trimmingCharacters(in: .whitespaces).isEmpty {
-                            Text(inlineMarkdown(t))
-                                .textSelection(.enabled)
-                        }
-                    case .image(let alt, let url):
-                        ImageThumbnailView(item: .imageURL(url: url, alt: alt))
-                    }
-                }
+        nsAttr.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+            if value == nil {
+                nsAttr.addAttribute(.font, value: font, range: range)
+            } else if let existingFont = value as? NSFont {
+                let traits = existingFont.fontDescriptor.symbolicTraits
+                var descriptor = font.fontDescriptor
+                descriptor = descriptor.withSymbolicTraits(traits)
+                nsAttr.addAttribute(.font, value: NSFont(descriptor: descriptor, size: font.pointSize) ?? font, range: range)
             }
         }
+        nsAttr.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
+            if value == nil {
+                nsAttr.addAttribute(.foregroundColor, value: color, range: range)
+            }
+        }
+        return nsAttr
     }
 
-    private func headingFont(_ level: Int) -> Font {
+    private func headingNSFont(_ level: Int) -> NSFont {
         switch level {
-        case 1: .title
-        case 2: .title2
-        case 3: .title3
-        default: .headline
+        case 1: .systemFont(ofSize: 24, weight: .bold)
+        case 2: .systemFont(ofSize: 20, weight: .bold)
+        case 3: .systemFont(ofSize: 17, weight: .semibold)
+        default: .systemFont(ofSize: 15, weight: .semibold)
         }
     }
 
@@ -240,93 +346,50 @@ private struct HoverCopyButton: ViewModifier {
 }
 
 extension View {
-    fileprivate func hoverCopyButton(text: String) -> some View {
+    func hoverCopyButton(text: String) -> some View {
         modifier(HoverCopyButton(textToCopy: text))
     }
 }
 
-// MARK: - Code Block
+// MARK: - Selectable Text (NSTextView wrapper)
 
-private struct CodeBlockView: View {
-    let language: String?
-    let code: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let language, !language.isEmpty {
-                Text(language)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
-            }
-
-            CodeText(code)
-                .highlightLanguage(highlightLanguage)
-                .codeTextColors(.theme(.atomOne))
-                .codeTextStyle(.plain)
-                .textSelection(.enabled)
-                .padding(.horizontal, 10)
-                .padding(.vertical, language?.isEmpty == false ? 4 : 10)
-                .padding(.bottom, 4)
+class SelectableNSTextView: NSTextView {
+    override var intrinsicContentSize: NSSize {
+        guard let layoutManager, let textContainer else {
+            return super.intrinsicContentSize
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.textBackgroundColor).opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(.quaternary, lineWidth: 0.5)
-        )
-        .hoverCopyButton(text: code)
+        layoutManager.ensureLayout(for: textContainer)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        return NSSize(width: NSView.noIntrinsicMetric, height: ceil(usedRect.height))
     }
 
-    private static let fenceToLanguage: [String: HighlightLanguage] = [
-        "js": .javaScript, "javascript": .javaScript,
-        "ts": .typeScript, "typescript": .typeScript,
-        "cpp": .cPlusPlus, "c++": .cPlusPlus,
-        "cs": .cSharp, "csharp": .cSharp,
-        "objc": .objectiveC, "objective-c": .objectiveC, "objectivec": .objectiveC,
-        "rb": .ruby,
-        "py": .python,
-        "sh": .bash, "zsh": .bash,
-        "yml": .yaml,
-        "tex": .latex,
-        "gql": .graphQL, "graphql": .graphQL,
-        "proto": .protocolBuffers,
-        "vb": .visualBasic,
-        "wasm": .webAssembly,
-        "pg": .postgreSQL, "postgres": .postgreSQL, "postgresql": .postgreSQL,
-        "md": .markdown,
-        "hs": .haskell,
-    ]
-
-    private var highlightLanguage: HighlightLanguage {
-        guard let language, !language.isEmpty else { return .plaintext }
-        let key = language.lowercased()
-        if let mapped = Self.fenceToLanguage[key] { return mapped }
-        return HighlightLanguage(rawValue: key) ?? .plaintext
+    override func layout() {
+        super.layout()
+        invalidateIntrinsicContentSize()
     }
 }
 
-// MARK: - Blockquote
+struct SelectableTextView: NSViewRepresentable {
+    let nsAttributedString: NSAttributedString
 
-private struct BlockquoteView: View {
-    let text: String
-    let renderInline: (String) -> AttributedString
+    func makeNSView(context: Context) -> SelectableNSTextView {
+        let tv = SelectableNSTextView()
+        tv.isEditable = false
+        tv.isSelectable = true
+        tv.drawsBackground = false
+        tv.textContainerInset = .zero
+        tv.textContainer?.lineFragmentPadding = 0
+        tv.isVerticallyResizable = false
+        tv.isHorizontallyResizable = false
+        tv.textContainer?.widthTracksTextView = true
+        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tv.setContentHuggingPriority(.required, for: .vertical)
+        return tv
+    }
 
-    var body: some View {
-        HStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 1)
-                .fill(.tertiary)
-                .frame(width: 3)
-            Text(renderInline(text))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .padding(.leading, 10)
-        }
-        .padding(.leading, 4)
-        .hoverCopyButton(text: text)
+    func updateNSView(_ tv: SelectableNSTextView, context: Context) {
+        tv.textStorage?.setAttributedString(nsAttributedString)
+        tv.invalidateIntrinsicContentSize()
     }
 }
 
@@ -342,7 +405,6 @@ private struct MarkdownTableView: View {
     let table: ParsedTable
     let renderInline: (String) -> AttributedString
 
-    /// Min width per column proportional to max content length (in chars × 7pt).
     private var columnMinWidths: [CGFloat] {
         (0..<table.headers.count).map { col in
             var maxLen = table.headers[col].count
@@ -431,7 +493,7 @@ extension MarkdownView {
                     codeLines.append(lines[i])
                     i += 1
                 }
-                if i < lines.count { i += 1 } // skip closing ```
+                if i < lines.count { i += 1 }
                 blocks.append(.code(lang.isEmpty ? nil : lang, codeLines.joined(separator: "\n")))
                 continue
             }
@@ -443,14 +505,14 @@ extension MarkdownView {
                 continue
             }
 
-            // Thematic break (---, ***, ___)
+            // Thematic break
             if isThematicBreak(trimmed) {
                 blocks.append(.thematicBreak)
                 i += 1
                 continue
             }
 
-            // Table: header line with |, followed by separator line |---|
+            // Table
             if trimmed.contains("|"),
                i + 1 < lines.count,
                isTableSeparator(lines[i + 1].trimmingCharacters(in: .whitespaces)) {
@@ -487,7 +549,7 @@ extension MarkdownView {
                 var quoteLines: [String] = []
                 while i < lines.count, lines[i].trimmingCharacters(in: .whitespaces).hasPrefix(">") {
                     var stripped = lines[i].trimmingCharacters(in: .whitespaces)
-                    stripped = String(stripped.dropFirst(1)) // drop >
+                    stripped = String(stripped.dropFirst(1))
                     if stripped.hasPrefix(" ") { stripped = String(stripped.dropFirst(1)) }
                     quoteLines.append(stripped)
                     i += 1
@@ -496,20 +558,20 @@ extension MarkdownView {
                 continue
             }
 
-            // Standalone image: ![alt](url)
+            // Standalone image
             if let imageBlock = parseImageLine(trimmed) {
                 blocks.append(imageBlock)
                 i += 1
                 continue
             }
 
-            // Empty line — skip
+            // Empty line
             if trimmed.isEmpty {
                 i += 1
                 continue
             }
 
-            // Paragraph — collect contiguous lines
+            // Paragraph
             var paraLines: [String] = []
             while i < lines.count {
                 let l = lines[i]
@@ -536,7 +598,6 @@ extension MarkdownView {
         return blocks
     }
 
-    /// Parse a standalone image line: ![alt](url)
     private func parseImageLine(_ line: String) -> MarkdownBlock? {
         guard line.hasPrefix("![") else { return nil }
         guard let closeBracket = line.firstIndex(of: "]"),
@@ -593,15 +654,12 @@ extension MarkdownView {
         return stripped.allSatisfy { $0 == first }
     }
 
-    // MARK: - Table parsing
-
     private func isTableSeparator(_ line: String) -> Bool {
         let cells = splitTableCells(line)
         guard !cells.isEmpty else { return false }
         return cells.allSatisfy { cell in
             let t = cell.trimmingCharacters(in: .whitespaces)
             guard !t.isEmpty else { return false }
-            // Must be dashes with optional leading/trailing colons: :---, :---:, ---:
             let inner = t.filter { $0 != "-" && $0 != ":" }
             return inner.isEmpty && t.contains("-")
         }
@@ -618,7 +676,6 @@ extension MarkdownView {
 
     private func splitTableCells(_ line: String) -> [String] {
         var trimmed = line.trimmingCharacters(in: .whitespaces)
-        // Remove leading and trailing pipes
         if trimmed.hasPrefix("|") { trimmed = String(trimmed.dropFirst()) }
         if trimmed.hasSuffix("|") { trimmed = String(trimmed.dropLast()) }
         return trimmed.split(separator: "|", omittingEmptySubsequences: false)
@@ -632,14 +689,13 @@ extension MarkdownView {
 
         let alignments = separatorCells.map { parseTableAlignment($0) }
         let colCount = headerCells.count
-        i += 2 // skip header + separator
+        i += 2
 
         var rows: [[String]] = []
         while i < lines.count {
             let lt = lines[i].trimmingCharacters(in: .whitespaces)
             guard lt.contains("|") else { break }
             var cells = splitTableCells(lt)
-            // Pad or trim to match header column count
             while cells.count < colCount { cells.append("") }
             if cells.count > colCount { cells = Array(cells.prefix(colCount)) }
             rows.append(cells)
