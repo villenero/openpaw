@@ -7,31 +7,23 @@ struct ChatView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ChatViewModel?
+    @State private var isAtBottom: Bool = true
+    @State private var scrollTrigger: Int = 0
+    @State private var contentHeight: CGFloat = 0
+    @State private var scrollViewHeight: CGFloat = 0
+    @State private var scrollOffset: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            messageList
-            Divider()
-            MessageInputView(
-                isStreaming: viewModel?.isStreaming ?? false,
-                isConnected: gateway.isConnected,
-                onSend: { text in
-                    viewModel?.send(text: text, in: conversation)
-                },
-                onStop: {
-                    viewModel?.stop()
+        messageList
+            .navigationTitle(conversation.title)
+            .onAppear {
+                if viewModel == nil {
+                    viewModel = ChatViewModel(gateway: gateway, modelContext: modelContext)
                 }
-            )
-        }
-        .navigationTitle(conversation.title)
-        .onAppear {
-            if viewModel == nil {
+            }
+            .onChange(of: conversation) {
                 viewModel = ChatViewModel(gateway: gateway, modelContext: modelContext)
             }
-        }
-        .onChange(of: conversation) {
-            viewModel = ChatViewModel(gateway: gateway, modelContext: modelContext)
-        }
     }
 
     private var messageList: some View {
@@ -49,18 +41,13 @@ struct ChatView: View {
 
                     // Typing indicator
                     if let vm = viewModel, vm.isAgentProcessing && vm.displayedContent.isEmpty && vm.streamingMedia.isEmpty {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Assistant")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                TypingIndicatorView()
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 10)
-                                    .background(Color(.controlBackgroundColor))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            Spacer(minLength: 60)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Assistant")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            TypingIndicatorView()
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 10)
                         }
                         .id("typing")
                     }
@@ -89,14 +76,79 @@ struct ChatView: View {
                         .padding(.horizontal)
                         .id("error")
                     }
+
+                    Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding()
+                .frame(minWidth: 400, maxWidth: 800)
+                .frame(maxWidth: .infinity)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onChange(of: geo.frame(in: .named("chatScroll")).minY) { _, newVal in
+                                scrollOffset = newVal
+                                contentHeight = geo.size.height
+                                updateIsAtBottom()
+                            }
+                            .onChange(of: geo.size.height) { _, newVal in
+                                contentHeight = newVal
+                                updateIsAtBottom()
+                            }
+                    }
+                )
+            }
+            .coordinateSpace(name: "chatScroll")
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { scrollViewHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { _, newH in
+                            scrollViewHeight = newH
+                            updateIsAtBottom()
+                        }
+                }
+            )
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    if !isAtBottom {
+                        Button {
+                            scrollTrigger += 1
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 36, height: 36)
+                                .background(
+                                    Circle()
+                                        .fill(Color(.windowBackgroundColor))
+                                        .overlay(Circle().stroke(Color.primary.opacity(0.2), lineWidth: 1))
+                                        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.bottom, 8)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    }
+
+                    MessageInputView(
+                        isStreaming: viewModel?.isStreaming ?? false,
+                        isConnected: gateway.isConnected,
+                        onSend: { text in
+                            viewModel?.send(text: text, in: conversation)
+                        },
+                        onStop: {
+                            viewModel?.stop()
+                        }
+                    )
+                }
+                .frame(minWidth: 400, maxWidth: 800)
+                .frame(maxWidth: .infinity)
+                .animation(.easeInOut(duration: 0.2), value: isAtBottom)
             }
             .onAppear {
                 scrollToBottom(proxy: proxy, animated: false)
             }
             .onChange(of: conversation) {
-                // Delay to next run loop so VStack has rendered the new messages
                 DispatchQueue.main.async {
                     scrollToBottom(proxy: proxy, animated: false)
                 }
@@ -107,29 +159,32 @@ struct ChatView: View {
             .onChange(of: viewModel?.displayedContent) {
                 scrollToBottom(proxy: proxy, animated: true)
             }
+            .onChange(of: viewModel?.isAgentProcessing) {
+                scrollToBottom(proxy: proxy, animated: true)
+            }
+            .onChange(of: scrollTrigger) {
+                scrollToBottom(proxy: proxy, animated: true)
+            }
+        }
+    }
+
+    private func updateIsAtBottom() {
+        let bottomEdge = -scrollOffset + scrollViewHeight
+        let threshold: CGFloat = 50
+        let atBottom = bottomEdge >= contentHeight - threshold || contentHeight <= scrollViewHeight
+        if atBottom != isAtBottom {
+            isAtBottom = atBottom
         }
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
-        let target: AnyHashable? = {
-            if let vm = viewModel, vm.isStreaming, !vm.displayedContent.isEmpty {
-                return "streaming"
-            } else if let vm = viewModel, vm.isAgentProcessing {
-                return "typing"
-            } else if let lastMsg = conversation.sortedMessages.last {
-                return lastMsg.id
-            }
-            return nil
-        }()
-        guard let target else { return }
-
         if animated {
             withAnimation(.easeOut(duration: 0.15)) {
-                proxy.scrollTo(target, anchor: .bottom)
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         } else {
             withTransaction(Transaction(animation: nil)) {
-                proxy.scrollTo(target, anchor: .bottom)
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MessageInputView: View {
     let isStreaming: Bool
@@ -9,6 +10,7 @@ struct MessageInputView: View {
     @AppStorage("enterSendsMessage") private var enterSendsMessage: Bool = true
     @State private var inputText: String = ""
     @FocusState private var isFocused: Bool
+    @State private var showAttachMenu: Bool = false
 
     // Emoji picker state
     @State private var emojiQuery: String = ""
@@ -17,7 +19,7 @@ struct MessageInputView: View {
     @State private var showEmojiPicker: Bool = false
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $inputText)
                     .font(.body)
@@ -26,8 +28,6 @@ struct MessageInputView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .scrollContentBackground(.hidden)
                     .padding(8)
-                    .background(Color(.textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
                     .onChange(of: inputText) {
                         updateEmojiPicker()
                     }
@@ -88,27 +88,96 @@ struct MessageInputView: View {
             }
             .zIndex(10)
 
-            if isStreaming {
-                Button(action: onStop) {
-                    Image(systemName: "stop.fill")
-                        .frame(width: 32, height: 32)
+            HStack {
+                Button {
+                    showAttachMenu.toggle()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .help("Stop generating")
-            } else {
-                Button(action: sendMessage) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                        .frame(width: 32, height: 32)
+                .buttonStyle(.plain)
+                .help("Add attachment")
+                .popover(isPresented: $showAttachMenu, arrowEdge: .top) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            showAttachMenu = false
+                            pickImage()
+                        } label: {
+                            Label("Image", systemImage: "photo")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+
+                        Divider()
+
+                        Button {
+                            showAttachMenu = false
+                            pickFile()
+                        } label: {
+                            Label("File", systemImage: "doc")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+
+                        Divider()
+
+                        Button {
+                            showAttachMenu = false
+                            pasteFromClipboard()
+                        } label: {
+                            Label("Paste from clipboard", systemImage: "clipboard")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                    }
+                    .frame(width: 200)
+                    .padding(.vertical, 4)
                 }
-                .buttonStyle(.borderless)
-                .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !isConnected)
-                .keyboardShortcut(.return, modifiers: .command)
-                .help(isConnected ? "Send message" : "Not connected")
+
+                Spacer()
+
+                if isStreaming {
+                    Button(action: onStop) {
+                        Image(systemName: "stop.fill")
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .help("Stop generating")
+                } else {
+                    Button(action: sendMessage) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !isConnected)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help(isConnected ? "Send message" : "Not connected")
+                }
             }
+            .padding(.top, 4)
         }
-        .padding(12)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.windowBackgroundColor).opacity(0.95))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.primary.opacity(0.2), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
         .onAppear { isFocused = true }
     }
 
@@ -185,5 +254,36 @@ struct MessageInputView: View {
         inputText.replaceSubrange(colonIndex..<inputText.endIndex, with: entry.emoji)
         showEmojiPicker = false
         emojiResults = []
+    }
+
+    // MARK: - Attachments
+
+    private func pickImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            guard response == .OK else { return }
+            // TODO: handle selected image files
+            _ = panel.urls
+        }
+    }
+
+    private func pickFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            guard response == .OK else { return }
+            // TODO: handle selected files
+            _ = panel.urls
+        }
+    }
+
+    private func pasteFromClipboard() {
+        // TODO: read image/file from pasteboard
+        guard let image = NSPasteboard.general.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage else { return }
+        _ = image
     }
 }

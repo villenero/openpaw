@@ -2,10 +2,7 @@ import SwiftUI
 
 enum BubbleColors {
     static let defaultUserHex = "#0A84FF26"     // accentColor 15% opacity
-    static let defaultAssistantHex = "#8080801A" // controlBackground-like
-
     static var defaultUser: Color { Color(hex: defaultUserHex) ?? .blue.opacity(0.15) }
-    static var defaultAssistant: Color { Color(hex: defaultAssistantHex) ?? Color(.controlBackgroundColor) }
 }
 
 extension Color {
@@ -49,45 +46,63 @@ struct MessageBubbleView: View {
     var isStreamingFade: Bool = false
 
     @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
-    @AppStorage("assistantBubbleColor") private var assistantBubbleHex: String = BubbleColors.defaultAssistantHex
 
     private var isUser: Bool { role == "user" }
 
     var body: some View {
-        HStack {
-            if isUser { Spacer(minLength: 60) }
+        if isUser {
+            userBubble
+        } else {
+            assistantBlock
+        }
+    }
 
-            VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
-                Text(isUser ? "You" : "Assistant")
+    private var userBubble: some View {
+        HStack {
+            Spacer(minLength: 80)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("You")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    // Media before text
                     if !media.isEmpty {
                         MediaContentView(media: media)
                     }
-
-                    // Text content
                     if !content.isEmpty {
-                        if isUser {
-                            Text(markdownContent)
-                                .textSelection(.enabled)
-                        } else if isStreamingFade {
-                            TypewriterTextView(text: content)
-                        } else {
-                            MarkdownView(source: content)
-                        }
+                        Text(markdownContent)
+                            .textSelection(.enabled)
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(bubbleBackground)
+                .background(Color(hex: userBubbleHex) ?? BubbleColors.defaultUser)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .hoverCopyButton(text: content)
             }
+        }
+    }
 
-            if !isUser { Spacer(minLength: 60) }
+    private var assistantBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Assistant")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                if !media.isEmpty {
+                    MediaContentView(media: media)
+                }
+                if !content.isEmpty {
+                    if isStreamingFade {
+                        TypewriterTextView(text: content)
+                    } else {
+                        MarkdownView(source: content)
+                    }
+                }
+            }
+            .hoverCopyButton(text: content)
         }
     }
 
@@ -98,11 +113,4 @@ struct MessageBubbleView: View {
         )) ?? AttributedString(content)
     }
 
-    private var bubbleBackground: some ShapeStyle {
-        if isUser {
-            return AnyShapeStyle(Color(hex: userBubbleHex) ?? BubbleColors.defaultUser)
-        } else {
-            return AnyShapeStyle(Color(hex: assistantBubbleHex) ?? BubbleColors.defaultAssistant)
-        }
-    }
 }
