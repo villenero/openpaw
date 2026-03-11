@@ -1,29 +1,51 @@
 import SwiftUI
 
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general = "General"
+    case appearance = "Appearance"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .general: "gearshape"
+        case .appearance: "paintbrush"
+        }
+    }
+}
+
 struct SettingsView: View {
+    @Bindable var gateway: GatewayService
+
+    var body: some View {
+        TabView {
+            GeneralSettingsView(gateway: gateway)
+                .tabItem {
+                    Label(SettingsTab.general.rawValue, systemImage: SettingsTab.general.icon)
+                }
+                .tag(SettingsTab.general)
+
+            AppearanceSettingsView()
+                .tabItem {
+                    Label(SettingsTab.appearance.rawValue, systemImage: SettingsTab.appearance.icon)
+                }
+                .tag(SettingsTab.appearance)
+        }
+        .frame(width: 500, height: 400)
+    }
+}
+
+// MARK: - General
+
+struct GeneralSettingsView: View {
     @Bindable var gateway: GatewayService
 
     @AppStorage("serverURL") private var savedURL: String = "ws://127.0.0.1:18789"
     @AppStorage("gatewayToken") private var savedToken: String = ""
     @AppStorage("enterSendsMessage") private var enterSendsMessage: Bool = true
-    @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
-
-    @State private var userColor: Color = BubbleColors.defaultUser
 
     var body: some View {
         Form {
-            Section("Appearance") {
-                ColorPicker("User bubble", selection: $userColor, supportsOpacity: false)
-                    .onChange(of: userColor) {
-                        userBubbleHex = userColor.toHex()
-                    }
-                Button("Reset to defaults") {
-                    userColor = BubbleColors.defaultUser
-                    userBubbleHex = BubbleColors.defaultUserHex
-                }
-                .font(.caption)
-            }
-
             Section("Input") {
                 Toggle("Enter sends message", isOn: $enterSendsMessage)
                 Text(enterSendsMessage
@@ -85,15 +107,40 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
-                .frame(height: 200)
+                .frame(height: 150)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 500, height: 500)
-        .padding()
         .onAppear {
             gateway.serverURL = savedURL
             gateway.gatewayToken = savedToken
+        }
+    }
+}
+
+// MARK: - Appearance
+
+struct AppearanceSettingsView: View {
+    @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
+
+    @State private var userColor: Color = BubbleColors.defaultUser
+
+    var body: some View {
+        Form {
+            Section("Chat Bubbles") {
+                ColorPicker("User bubble color", selection: $userColor, supportsOpacity: false)
+                    .onChange(of: userColor) {
+                        userBubbleHex = userColor.toHex()
+                    }
+                Button("Reset to defaults") {
+                    userColor = BubbleColors.defaultUser
+                    userBubbleHex = BubbleColors.defaultUserHex
+                }
+                .font(.caption)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
             userColor = Color(hex: userBubbleHex) ?? BubbleColors.defaultUser
         }
     }

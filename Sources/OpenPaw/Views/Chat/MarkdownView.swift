@@ -10,7 +10,7 @@ struct MarkdownView: View {
     private static let highlighter = Highlight()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(renderedItems.enumerated()), id: \.offset) { _, item in
                 renderItemView(item)
             }
@@ -84,9 +84,13 @@ struct MarkdownView: View {
             }
         }
 
-        let defaultFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let defaultFont = NSFont.systemFont(ofSize: 14)
         let defaultColor = NSColor.labelColor
         let monoFont = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+
+        let bodyStyle = NSMutableParagraphStyle()
+        bodyStyle.lineSpacing = 4
+        bodyStyle.paragraphSpacing = 6
 
         let codeBg = NSColor(white: 0.12, alpha: 1.0)
         let codePadStyle = NSMutableParagraphStyle()
@@ -99,11 +103,18 @@ struct MarkdownView: View {
             switch block {
             case .paragraph(let text):
                 blockSep()
-                current.append(inlineToNS(text, font: defaultFont, color: defaultColor))
+                let paraAttr = NSMutableAttributedString(attributedString: inlineToNS(text, font: defaultFont, color: defaultColor))
+                paraAttr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: paraAttr.length))
+                current.append(paraAttr)
 
             case .heading(let level, let text):
                 blockSep()
-                current.append(inlineToNS(text, font: headingNSFont(level), color: defaultColor))
+                let headingStyle = NSMutableParagraphStyle()
+                headingStyle.lineSpacing = 4
+                headingStyle.paragraphSpacing = 4
+                let headingAttr = NSMutableAttributedString(attributedString: inlineToNS(text, font: headingNSFont(level), color: defaultColor))
+                headingAttr.addAttribute(.paragraphStyle, value: headingStyle, range: NSRange(location: 0, length: headingAttr.length))
+                current.append(headingAttr)
 
             case .code(let lang, let code):
                 blockSep()
@@ -168,6 +179,8 @@ struct MarkdownView: View {
                 let listStyle = NSMutableParagraphStyle()
                 listStyle.headIndent = 20
                 listStyle.firstLineHeadIndent = 8
+                listStyle.lineSpacing = 4
+                listStyle.paragraphSpacing = 2
                 let tabStop = NSTextTab(textAlignment: .left, location: 20)
                 listStyle.tabStops = [tabStop]
 
@@ -192,6 +205,8 @@ struct MarkdownView: View {
                 let listStyle = NSMutableParagraphStyle()
                 listStyle.headIndent = 24
                 listStyle.firstLineHeadIndent = 8
+                listStyle.lineSpacing = 4
+                listStyle.paragraphSpacing = 2
                 let tabStop = NSTextTab(textAlignment: .left, location: 24)
                 listStyle.tabStops = [tabStop]
 
@@ -216,6 +231,7 @@ struct MarkdownView: View {
                 let quoteStyle = NSMutableParagraphStyle()
                 quoteStyle.headIndent = 16
                 quoteStyle.firstLineHeadIndent = 16
+                quoteStyle.lineSpacing = 4
                 let quoteAttr = inlineToNS(text, font: defaultFont, color: NSColor.secondaryLabelColor)
                 let mutable = NSMutableAttributedString(attributedString: quoteAttr)
                 mutable.addAttribute(.paragraphStyle, value: quoteStyle, range: NSRange(location: 0, length: mutable.length))
