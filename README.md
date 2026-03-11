@@ -17,11 +17,16 @@ Built with SwiftUI &bull; Streaming responses &bull; Rich markdown &bull; Multi-
 ## Highlights
 
 - **Streaming with typewriter effect** — Adaptive-speed character reveal with alpha fade-in on trailing characters. Text materializes smoothly instead of jumping in chunks.
-- **Full markdown rendering** — Code blocks with syntax highlighting (50+ languages), tables, blockquotes, lists, headings, inline formatting. Copy button on hover.
+- **Full markdown rendering** — Code blocks with syntax highlighting (50+ languages), tables, blockquotes, lists, headings, inline formatting. Native text selection across paragraphs.
 - **Multi-modal messages** — Inline images (base64 & URL), audio player with play/pause and seekable progress bar. Click images to open full-size popup.
+- **Floating input bar** — Rounded input field with attachment menu (+), overlays the chat with scroll-to-bottom arrow when needed.
+- **Cross-paragraph text selection** — Native NSTextView rendering for full text selection across all content blocks within a message.
 - **Emoji picker** — Type `:` followed by 2+ characters to search 500+ emojis in English and Spanish. Arrow keys to navigate, Enter to insert.
-- **Auto-connect & reconnect** — Connects on launch, reconnects with exponential backoff (1s → 30s max) on connection loss.
+- **Bottom-anchored scroll** — Content stays pinned to the bottom when resizing the window. No text lost during reflow.
+- **Customizable appearance** — User bubble color picker in tabbed Settings. Assistant messages render full-width without bubbles.
+- **Auto-connect & reconnect** — Connects on launch, reconnects with exponential backoff (1s to 30s max) on connection loss.
 - **Conversation persistence** — All chats saved locally with SwiftData. Auto-titling from first response.
+- **Single-instance app** — Prevents multiple windows from opening.
 
 ## Requirements
 
@@ -51,26 +56,46 @@ The app auto-connects on subsequent launches. On first connection, OpenClaw may 
 
 ## Features
 
+### Chat Interface
+
+- **Assistant messages** render full-width with no background bubble for maximum readability
+- **User messages** appear in colored bubbles aligned to the right (color customizable in Settings)
+- **Floating input bar** with rounded border, adaptive dark/light styling, and attachment menu
+- **Scroll-to-bottom arrow** appears when you scroll up, click to jump back to latest content
+- **Bottom-anchored scroll** — resizing the window keeps content pinned at the bottom, reflow pushes upward
+- **Typing indicator** — animated bouncing dots while the assistant is processing
+
 ### Streaming & Typewriter Effect
 
 Responses stream in real-time with an adaptive buffer system:
 
-- **Large buffer (>100 chars):** 3 chars every 2ms — catches up fast
-- **Medium buffer (20-100):** 1 char every 2-8ms — smooth flow
-- **Small buffer (<20):** 1 char every 15ms — natural pace
+- **Large buffer (>200 chars):** flushes to within 20 chars of target instantly
+- **Medium buffer (30-80):** 1-3 chars every 2-8ms — smooth flow
+- **Small buffer (<10):** 1 char every 15ms — natural pace
 
-The last 6 characters fade in with decreasing opacity (0.15 → 0.92), creating a subtle materialization effect. On completion, all text snaps to full opacity instantly.
+The last 20 characters fade in with increasing opacity, creating a subtle materialization effect. On completion, all text snaps to full opacity instantly.
 
 ### Markdown Rendering
 
+All text is rendered via a single NSTextView per message for native cross-paragraph text selection.
+
 | Feature | Details |
 |---------|---------|
-| Code blocks | Syntax highlighting for 50+ languages via [HighlightSwift](https://github.com/appstefan/HighlightSwift), Atom One theme |
+| Code blocks | Syntax highlighting (50+ languages) via [HighlightSwift](https://github.com/appstefan/HighlightSwift), Atom One theme, dark background with language label |
 | Tables | Zebra striping, proportional column widths, alignment support |
-| Lists | Ordered and unordered, with inline image support |
-| Blockquotes | Styled with left border, copy button on hover |
+| Lists | Ordered and unordered with proper indentation and line spacing |
+| Blockquotes | Styled with indent and secondary color |
 | Images | `![alt](url)` rendered inline as thumbnails, click to expand |
 | Inline | Bold, italic, strikethrough, links, code spans |
+| Typography | 14pt body font, 4pt line spacing, 6pt paragraph spacing |
+
+### Attachments
+
+The **+** button in the input bar opens a popover with options:
+
+- **Image** — Pick images via file browser
+- **File** — Attach any file
+- **Paste from clipboard** — Insert image from clipboard
 
 ### Multi-Modal Content
 
@@ -95,7 +120,13 @@ Type `:` followed by 2+ characters anywhere in the input to trigger autocomplete
 - Prefix matches ranked first, then contains matches (max 8 results)
 - Arrow keys to navigate, Enter/Tab to select, Esc to dismiss
 - Smart detection: skips URLs (`http://`), double colons (`::`)
-- Blur background, rounded corners
+
+### Settings
+
+Tabbed settings window (Cmd+,):
+
+- **General** — Input behavior, server URL, gateway token, connection status, debug log
+- **Appearance** — User bubble color picker with reset to defaults
 
 ### Connection & Authentication
 
@@ -111,7 +142,8 @@ Type `:` followed by 2+ characters anywhere in the input to trigger autocomplete
 Sources/OpenPaw/
 ├── App/
 │   ├── OpenPawApp.swift              Entry point, SwiftData container, auto-connect
-│   └── AppState.swift                Global observable state
+│   ├── AppState.swift                Global observable state
+│   └── BuildInfo.swift               Auto-generated build timestamp
 ├── Services/
 │   ├── LLMService.swift              WebSocket connection, protocol v3, reconnection
 │   ├── DeviceIdentity.swift          Ed25519 keypair management
@@ -127,10 +159,10 @@ Sources/OpenPaw/
 └── Views/
     ├── ContentView.swift             NavigationSplitView layout
     ├── Chat/
-    │   ├── ChatView.swift            Message list, scroll management, streaming bubble
-    │   ├── MessageBubbleView.swift   User/assistant bubbles with media support
-    │   ├── MessageInputView.swift    TextEditor, keyboard shortcuts, emoji picker
-    │   ├── MarkdownView.swift        Block parser + renderer (code, tables, images, etc.)
+    │   ├── ChatView.swift            Message list, flipped scroll, streaming bubble
+    │   ├── MessageBubbleView.swift   User bubbles + full-width assistant blocks
+    │   ├── MessageInputView.swift    Floating input, attachment menu, emoji picker
+    │   ├── MarkdownView.swift        Block parser + NSTextView renderer
     │   ├── TypewriterTextView.swift  AttributedString with trailing alpha fade
     │   ├── TypingIndicatorView.swift Animated bouncing dots
     │   ├── MediaContentView.swift    Image grid + audio player layout
@@ -142,7 +174,7 @@ Sources/OpenPaw/
     │   ├── ConversationListView.swift  Chat list with new/delete
     │   └── ConversationRowView.swift   Preview with last message
     └── Settings/
-        └── SettingsView.swift        Server config, status, debug log
+        └── SettingsView.swift        Tabbed settings (General + Appearance)
 ```
 
 ## Protocol
