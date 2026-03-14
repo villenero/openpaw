@@ -78,6 +78,12 @@ struct ChatView: View {
         .onChange(of: conversation) {
             viewModel = ChatViewModel(gateway: gateway, modelContext: modelContext)
         }
+        .onChange(of: gateway.isConnected) { wasConnected, isNowConnected in
+            if !wasConnected && isNowConnected {
+                // Reconnected — sync history from gateway to catch missed messages
+                viewModel?.syncHistory(for: conversation)
+            }
+        }
     }
 
     private var messageList: some View {
