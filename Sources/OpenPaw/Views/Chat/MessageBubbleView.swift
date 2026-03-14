@@ -62,6 +62,11 @@ struct MessageBubbleView: View {
 
     private var isUser: Bool { role == "user" }
 
+    private var userBubbleColor: Color {
+        let theme = ColorTheme(rawValue: colorTheme) ?? .default_
+        return Color(hex: theme.userBubbleHex) ?? BubbleColors.defaultUser
+    }
+
     var body: some View {
         if isUser {
             userBubble
@@ -90,7 +95,7 @@ struct MessageBubbleView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(BubbleColors.themedUser)
+                .background(userBubbleColor)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(alignment: .bottomTrailing) {
                     if isHovering || copied {
