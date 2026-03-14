@@ -6,6 +6,7 @@ struct ContentView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var selectedConversation: Conversation?
+    @AppStorage("lastConversationID") private var lastConversationID: String = ""
 
     var body: some View {
         NavigationSplitView {
@@ -33,6 +34,26 @@ struct ContentView: View {
             ToolbarItem(placement: .automatic) {
                 ConnectionStatusView(gateway: gateway)
             }
+        }
+        .onChange(of: selectedConversation) {
+            if let id = selectedConversation?.id.uuidString {
+                lastConversationID = id
+            }
+        }
+        .onAppear {
+            restoreLastConversation()
+        }
+    }
+
+    private func restoreLastConversation() {
+        guard !lastConversationID.isEmpty,
+              let uuid = UUID(uuidString: lastConversationID) else { return }
+
+        let descriptor = FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.id == uuid }
+        )
+        if let conversation = try? modelContext.fetch(descriptor).first {
+            selectedConversation = conversation
         }
     }
 }
