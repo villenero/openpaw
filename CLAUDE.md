@@ -158,6 +158,13 @@ swift run OpenPaw
 # or: ./build-app.sh
 ```
 
+## Hot Reload (kill → build → relaunch)
+After making changes, use this to restart the app for testing:
+```bash
+killall OpenPaw 2>/dev/null; cd ~/code/openpaw && swift build && open dist/OpenPaw.app
+```
+Yoda runs this automatically after each successful implementation cycle.
+
 ## Guidelines
 - Keep the codebase clean and SwiftUI-idiomatic
 - Use @Observable (not ObservableObject) — already in use
