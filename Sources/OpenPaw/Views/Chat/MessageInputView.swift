@@ -129,6 +129,7 @@ struct MessageInputView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
 
@@ -142,6 +143,7 @@ struct MessageInputView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
 
@@ -155,6 +157,7 @@ struct MessageInputView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                     }
