@@ -23,10 +23,11 @@ Built with SwiftUI &bull; Streaming responses &bull; Rich markdown &bull; Multi-
 - **Cross-paragraph text selection** — Native NSTextView rendering for full text selection across all content blocks within a message.
 - **Emoji picker** — Type `:` followed by 2+ characters to search 500+ emojis in English and Spanish. Arrow keys to navigate, Enter to insert.
 - **Bottom-anchored scroll** — Content stays pinned to the bottom when resizing the window. No text lost during reflow.
-- **Customizable appearance** — User bubble color picker in tabbed Settings. Assistant messages render full-width without bubbles.
+- **Color themes** — 8 color themes (Sky, Teal, Matcha, Peach, Lilac, Navy, Dark + Default) applied across bubbles, send button, typing dots, scroll arrow, audio player, and emoji picker. Telegram-style swatch grid in Settings.
 - **Auto-connect & reconnect** — Connects on launch, reconnects with exponential backoff (1s to 30s max) on connection loss.
-- **Conversation persistence** — All chats saved locally with SwiftData. Auto-titling from first response.
+- **Conversation persistence** — All chats saved locally with SwiftData. Auto-titling from first response. Restores last conversation on relaunch.
 - **Single-instance app** — Prevents multiple windows from opening.
+- **Smart input blocking** — Send button disabled while assistant is streaming to prevent message loss.
 
 ## Requirements
 
@@ -126,7 +127,7 @@ Type `:` followed by 2+ characters anywhere in the input to trigger autocomplete
 Tabbed settings window (Cmd+,):
 
 - **General** — Input behavior, server URL, gateway token, connection status, debug log
-- **Appearance** — User bubble color picker with reset to defaults
+- **Appearance** — Color theme picker (8 themes), Light/Dark/Auto mode
 
 ### Connection & Authentication
 
@@ -155,6 +156,7 @@ Sources/OpenPaw/
 │   ├── Message.swift                 SwiftData model (role, content, media JSON)
 │   ├── LLMTypes.swift                Wire protocol types, AnyCodable, error types
 │   ├── MediaItem.swift               Image/audio content enum (Codable)
+│   ├── ColorTheme.swift              8 color themes with gradients, accents, bubble colors
 │   └── EmojiDictionary.swift         500+ emoji entries with bilingual keywords
 └── Views/
     ├── ContentView.swift             NavigationSplitView layout
