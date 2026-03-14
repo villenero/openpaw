@@ -145,9 +145,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
 struct AppearanceSettingsView: View {
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.auto.rawValue
-    @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
+    @AppStorage("colorTheme") private var selectedTheme: String = ColorTheme.default_.rawValue
 
-    @State private var userColor: Color = BubbleColors.defaultUser
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 16), count: 4)
 
     var body: some View {
         Form {
@@ -161,22 +161,41 @@ struct AppearanceSettingsView: View {
                 .pickerStyle(.inline)
             }
 
-            Section("Chat Bubbles") {
-                ColorPicker("User bubble color", selection: $userColor, supportsOpacity: false)
-                    .onChange(of: userColor) {
-                        userBubbleHex = userColor.toHex()
+            Section("Color Theme") {
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(ColorTheme.allCases) { theme in
+                        VStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(
+                                    LinearGradient(
+                                        colors: theme.gradientColors,
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 60, height: 60)
+                                .overlay(alignment: .bottomTrailing) {
+                                    if selectedTheme == theme.rawValue {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundStyle(.white, Color(hex: theme.accentHex) ?? .blue)
+                                            .offset(x: 4, y: 4)
+                                    }
+                                }
+                                .onTapGesture {
+                                    selectedTheme = theme.rawValue
+                                }
+
+                            Text(theme.displayName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                Button("Reset to defaults") {
-                    userColor = BubbleColors.defaultUser
-                    userBubbleHex = BubbleColors.defaultUserHex
                 }
-                .font(.caption)
+                .padding(.vertical, 4)
             }
         }
         .formStyle(.grouped)
-        .onAppear {
-            userColor = Color(hex: userBubbleHex) ?? BubbleColors.defaultUser
-        }
     }
 }
 

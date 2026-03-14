@@ -3,6 +3,16 @@ import SwiftUI
 enum BubbleColors {
     static let defaultUserHex = "#0A84FF26"     // accentColor 15% opacity
     static var defaultUser: Color { Color(hex: defaultUserHex) ?? .blue.opacity(0.15) }
+
+    static var themedUserHex: String {
+        let stored = UserDefaults.standard.string(forKey: "colorTheme") ?? ColorTheme.default_.rawValue
+        let theme = ColorTheme(rawValue: stored) ?? .default_
+        return theme.userBubbleHex
+    }
+
+    static var themedUser: Color {
+        Color(hex: themedUserHex) ?? defaultUser
+    }
 }
 
 extension Color {
@@ -46,11 +56,16 @@ struct MessageBubbleView: View {
     var isStreamingFade: Bool = false
     var onEdit: (() -> Void)? = nil
 
-    @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
+    @AppStorage("colorTheme") private var colorTheme: String = ColorTheme.default_.rawValue
     @State private var isHovering = false
     @State private var copied = false
 
     private var isUser: Bool { role == "user" }
+
+    private var userBubbleColor: Color {
+        let theme = ColorTheme(rawValue: colorTheme) ?? .default_
+        return Color(hex: theme.userBubbleHex) ?? BubbleColors.defaultUser
+    }
 
     var body: some View {
         if isUser {
@@ -80,7 +95,7 @@ struct MessageBubbleView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color(hex: userBubbleHex) ?? BubbleColors.defaultUser)
+                .background(userBubbleColor)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(alignment: .bottomTrailing) {
                     if isHovering || copied {

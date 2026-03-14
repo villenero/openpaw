@@ -15,6 +15,12 @@ struct AudioPlayerView: View {
     private var duration: TimeInterval { isActive ? audioManager.duration : cachedDuration }
 
     @State private var cachedDuration: TimeInterval = 0
+    @AppStorage("colorTheme") private var colorTheme: String = ColorTheme.default_.rawValue
+
+    private var themeAccent: Color {
+        let t = ColorTheme.current(from: colorTheme)
+        return Color(hex: t.accentHex) ?? .blue
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -38,7 +44,7 @@ struct AudioPlayerView: View {
                         .frame(height: 4)
 
                     Capsule()
-                        .fill(Color.accentColor)
+                        .fill(themeAccent)
                         .frame(width: progressWidth(in: geo.size.width), height: 4)
                 }
                 .frame(height: geo.size.height)

@@ -9,6 +9,12 @@ struct MessageInputView: View {
     @Binding var pendingEditText: String
 
     @AppStorage("enterSendsMessage") private var enterSendsMessage: Bool = true
+    @AppStorage("colorTheme") private var colorTheme: String = ColorTheme.default_.rawValue
+
+    private var themeAccent: Color {
+        let t = ColorTheme.current(from: colorTheme)
+        return Color(hex: t.accentHex) ?? .blue
+    }
     @State private var inputText: String = ""
     @FocusState private var isFocused: Bool
     @State private var showAttachMenu: Bool = false
@@ -24,7 +30,7 @@ struct MessageInputView: View {
 
     private var canSend: Bool {
         let hasText = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return (hasText || !attachments.isEmpty) && isConnected
+        return (hasText || !attachments.isEmpty) && isConnected && !isStreaming
     }
 
     var body: some View {
@@ -50,7 +56,7 @@ struct MessageInputView: View {
                             insertEmoji(emojiResults[emojiSelectedIndex])
                             return .handled
                         }
-                        if enterSendsMessage && press.modifiers.isEmpty {
+                        if enterSendsMessage && press.modifiers.isEmpty && canSend {
                             sendMessage()
                             return .handled
                         }
@@ -123,6 +129,7 @@ struct MessageInputView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
 
@@ -136,6 +143,7 @@ struct MessageInputView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
 
@@ -149,6 +157,7 @@ struct MessageInputView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                     }
@@ -170,6 +179,7 @@ struct MessageInputView: View {
                     Button(action: sendMessage) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title2)
+                            .foregroundStyle(themeAccent)
                             .frame(width: 28, height: 28)
                     }
                     .buttonStyle(.borderless)
