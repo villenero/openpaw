@@ -8,8 +8,10 @@ struct ContentView: View {
     @State private var selectedConversation: Conversation?
     @AppStorage("lastConversationID") private var lastConversationID: String = ""
 
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             ConversationListView(
                 selectedConversation: $selectedConversation,
                 gateway: gateway
@@ -31,10 +33,24 @@ struct ContentView: View {
         }
         .frame(minWidth: 700, minHeight: 500)
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button(action: { toggleSidebar() }) {
+                    Image(systemName: "sidebar.left")
+                }
+                .help("Toggle sidebar")
+            }
+
+            ToolbarItem(placement: .principal) {
+                Text(selectedConversation?.title ?? "OpenPaw")
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+
             ToolbarItem(placement: .automatic) {
                 ConnectionStatusView(gateway: gateway)
             }
         }
+        .navigationTitle("")
         .onChange(of: selectedConversation) {
             if let id = selectedConversation?.id.uuidString {
                 lastConversationID = id
@@ -43,6 +59,10 @@ struct ContentView: View {
         .onAppear {
             restoreLastConversation()
         }
+    }
+
+    private func toggleSidebar() {
+        NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
     }
 
     private func restoreLastConversation() {

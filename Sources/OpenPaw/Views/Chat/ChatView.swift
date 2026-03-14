@@ -69,7 +69,7 @@ struct ChatView: View {
                 }
             )
         }
-        .navigationTitle(conversation.title)
+        .navigationTitle("")
         .onAppear {
             if viewModel == nil {
                 viewModel = ChatViewModel(gateway: gateway, modelContext: modelContext)
