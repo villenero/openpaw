@@ -30,7 +30,7 @@ struct MessageInputView: View {
 
     private var canSend: Bool {
         let hasText = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return (hasText || !attachments.isEmpty) && isConnected
+        return (hasText || !attachments.isEmpty) && isConnected && !isStreaming
     }
 
     var body: some View {
@@ -56,7 +56,7 @@ struct MessageInputView: View {
                             insertEmoji(emojiResults[emojiSelectedIndex])
                             return .handled
                         }
-                        if enterSendsMessage && press.modifiers.isEmpty {
+                        if enterSendsMessage && press.modifiers.isEmpty && canSend {
                             sendMessage()
                             return .handled
                         }
