@@ -14,6 +14,12 @@ struct ChatView: View {
     @State private var contentHeight: CGFloat = 0
     @State private var scrollViewHeight: CGFloat = 0
     @State private var pendingEditText: String = ""
+    @AppStorage("colorTheme") private var colorTheme: String = ColorTheme.default_.rawValue
+
+    private var themeAccent: Color {
+        let t = ColorTheme.current(from: colorTheme)
+        return Color(hex: t.accentHex) ?? .blue
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -26,12 +32,12 @@ struct ChatView: View {
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(themeAccent)
                             .frame(width: 36, height: 36)
                             .background(
                                 Circle()
                                     .fill(Color(.windowBackgroundColor))
-                                    .overlay(Circle().stroke(Color.primary.opacity(0.2), lineWidth: 1))
+                                    .overlay(Circle().stroke(themeAccent.opacity(0.3), lineWidth: 1))
                                     .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
                             )
                     }

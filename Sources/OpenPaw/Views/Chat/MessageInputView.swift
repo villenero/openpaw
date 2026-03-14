@@ -9,6 +9,12 @@ struct MessageInputView: View {
     @Binding var pendingEditText: String
 
     @AppStorage("enterSendsMessage") private var enterSendsMessage: Bool = true
+    @AppStorage("colorTheme") private var colorTheme: String = ColorTheme.default_.rawValue
+
+    private var themeAccent: Color {
+        let t = ColorTheme.current(from: colorTheme)
+        return Color(hex: t.accentHex) ?? .blue
+    }
     @State private var inputText: String = ""
     @FocusState private var isFocused: Bool
     @State private var showAttachMenu: Bool = false
@@ -170,6 +176,7 @@ struct MessageInputView: View {
                     Button(action: sendMessage) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title2)
+                            .foregroundStyle(themeAccent)
                             .frame(width: 28, height: 28)
                     }
                     .buttonStyle(.borderless)

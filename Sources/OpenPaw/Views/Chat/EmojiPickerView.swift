@@ -4,6 +4,12 @@ struct EmojiPickerView: View {
     let results: [EmojiEntry]
     let selectedIndex: Int
     let onSelect: (EmojiEntry) -> Void
+    @AppStorage("colorTheme") private var colorTheme: String = ColorTheme.default_.rawValue
+
+    private var themeAccent: Color {
+        let t = ColorTheme.current(from: colorTheme)
+        return Color(hex: t.accentHex) ?? .blue
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -19,7 +25,7 @@ struct EmojiPickerView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(index == selectedIndex ? Color.accentColor.opacity(0.2) : Color.clear)
+                    .background(index == selectedIndex ? themeAccent.opacity(0.2) : Color.clear)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

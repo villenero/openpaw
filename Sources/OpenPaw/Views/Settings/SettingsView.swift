@@ -178,7 +178,7 @@ struct AppearanceSettingsView: View {
                                     if selectedTheme == theme.rawValue {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 16))
-                                            .foregroundStyle(.white, .blue)
+                                            .foregroundStyle(.white, Color(hex: theme.accentHex) ?? .blue)
                                             .offset(x: 4, y: 4)
                                     }
                                 }

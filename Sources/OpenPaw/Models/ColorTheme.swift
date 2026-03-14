@@ -50,6 +50,27 @@ enum ColorTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    var accentHex: String {
+        switch self {
+        case .default_: "#0A84FF"
+        case .sky: "#4A90D9"
+        case .turquoise: "#2ECC71"
+        case .teal: "#00CEC9"
+        case .matcha: "#A8B820"
+        case .sunshine: "#F9CA24"
+        case .peach: "#FD79A8"
+        case .lilac: "#A29BFE"
+        case .ebony: "#B8860B"
+        case .navy: "#2C3E6B"
+        case .gray: "#636E72"
+        case .dark: "#6C63FF"
+        }
+    }
+
+    static func current(from storage: String) -> ColorTheme {
+        ColorTheme(rawValue: storage) ?? .default_
+    }
+
     var userBubbleHex: String {
         switch self {
         case .default_: "#0A84FF26"
