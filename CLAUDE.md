@@ -166,10 +166,22 @@ swift run OpenPaw
 - Target macOS 14+ only
 
 ## Git Discipline — MANDATORY
-1. **Commit before starting:** If there are uncommitted changes, commit them first with message `wip: save state before <task>`
-2. **Stay in scope:** Only touch the files/functions specified in the task. Do NOT refactor, reorganize, or "improve" unrelated code.
-3. **Commit after completing:** Commit your changes with a descriptive message: `feat:`, `fix:`, `refactor:` prefix
-4. **Build before committing:** Always run `swift build` and verify it succeeds before committing
-5. **One task = one commit:** Don't mix multiple unrelated changes
+1. **Stay in scope:** Only touch the files/functions specified in the task. Do NOT refactor, reorganize, or "improve" unrelated code.
+2. **Build before committing:** Always run `swift build` and verify it succeeds before committing
+3. **Commit your changes** with a descriptive message: `feat:`, `fix:`, `refactor:` prefix
+4. **One task = one commit:** Don't mix multiple unrelated changes
 
 If something breaks, we need to be able to `git revert` cleanly. No exceptions.
+
+## Development Workflow
+This project is managed by Yoda (PM/architect) who delegates implementation to you (Claude Code / "Claudita"). Carlos reviews and tests.
+
+**Pipeline: Carlos → Yoda → Claudita → Yoda reviews → Carlos tests**
+
+1. Yoda creates a feature branch before each task: `git checkout -b feat/task-name`
+2. Yoda gives you a SURGICAL spec: exact files, exact functions, what NOT to touch
+3. You implement ONLY what's specified, commit with descriptive message
+4. Yoda reviews the diff before declaring it done
+5. Carlos tests; if OK → merge to main; if broken → branch is disposable
+
+**For small fixes:** branch may be skipped, but commit discipline still applies.
