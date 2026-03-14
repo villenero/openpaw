@@ -148,6 +148,38 @@ final class ChatViewModel {
         }
     }
 
+    /// Sync missing messages from gateway after reconnection.
+    func syncHistory(for conversation: Conversation) {
+        guard gateway.isConnected else { return }
+
+        Task {
+            do {
+                let response = try await gateway.getChatHistory()
+                guard response.ok == true,
+                      let payload = response.payload,
+                      let messagesArray = payload["messages"]?.arrayValue else { return }
+
+                let localCount = conversation.messages.count
+                let remoteMessages = messagesArray.compactMap { $0 as? [String: Any] }
+
+                // If gateway has more messages, append the new ones
+                if remoteMessages.count > localCount {
+                    let newMessages = remoteMessages.suffix(from: localCount)
+                    for dict in newMessages {
+                        guard let role = dict["role"] as? String else { continue }
+                        let parsed = extractContent(from: dict)
+                        let msg = Message(role: role, content: parsed.text, media: parsed.media)
+                        msg.conversation = conversation
+                        conversation.messages.append(msg)
+                    }
+                    try? modelContext.save()
+                }
+            } catch {
+                // Sync is best-effort
+            }
+        }
+    }
+
     private func handleChatEvent(_ frame: IncomingFrame, conversation: Conversation) {
         guard let payload = frame.payload else { return }
 

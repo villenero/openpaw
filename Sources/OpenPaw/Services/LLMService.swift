@@ -37,7 +37,10 @@ final class GatewayService {
         reconnectDelay = 1
         connectionError = nil
         debugLog = ""
+        await establishConnection()
+    }
 
+    private func establishConnection() async {
         guard let url = URL(string: serverURL) else {
             connectionError = "Invalid URL"
             return
@@ -117,6 +120,7 @@ final class GatewayService {
         reconnectTask?.cancel()
         reconnectTask = nil
         tearDown()
+        eventHandlers.removeAll()
     }
 
     private func tearDown() {
@@ -130,7 +134,9 @@ final class GatewayService {
             continuation.resume(throwing: GatewayError.disconnected)
         }
         pendingRequests.removeAll()
-        eventHandlers.removeAll()
+        // NOTE: Do NOT clear eventHandlers here — ChatViewModel registers
+        // them during send() and needs them to survive reconnections.
+        // They are explicitly cleared in ChatViewModel.finishStreaming().
     }
 
     private func scheduleReconnect() {
@@ -142,7 +148,10 @@ final class GatewayService {
         reconnectTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard let self, self.autoReconnect, !Task.isCancelled else { return }
-            await self.connect()
+            // Skip tearDown on reconnect — already torn down when connection was lost.
+            // Go straight to establishing a new connection.
+            self.connectionError = nil
+            await self.establishConnection()
         }
     }
 
