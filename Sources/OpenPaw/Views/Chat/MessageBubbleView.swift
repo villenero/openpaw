@@ -44,8 +44,11 @@ struct MessageBubbleView: View {
     let content: String
     var media: [MediaItem] = []
     var isStreamingFade: Bool = false
+    var onEdit: (() -> Void)? = nil
 
     @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
+    @State private var isHovering = false
+    @State private var copied = false
 
     private var isUser: Bool { role == "user" }
 
@@ -79,8 +82,47 @@ struct MessageBubbleView: View {
                 .padding(.vertical, 8)
                 .background(Color(hex: userBubbleHex) ?? BubbleColors.defaultUser)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .hoverCopyButton(text: content)
+                .overlay(alignment: .bottomTrailing) {
+                    if isHovering || copied {
+                        HStack(spacing: 2) {
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(content, forType: .string)
+                                copied = true
+                                Task {
+                                    try? await Task.sleep(for: .seconds(2))
+                                    copied = false
+                                }
+                            } label: {
+                                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                    .font(.caption2)
+                                    .foregroundStyle(copied ? .green : .secondary)
+                                    .frame(width: 24, height: 24)
+                            }
+                            .buttonStyle(.plain)
+                            .help(copied ? "Copied!" : "Copy")
+
+                            if let onEdit {
+                                Button {
+                                    onEdit()
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 24, height: 24)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Edit")
+                            }
+                        }
+                        .offset(y: 28)
+                        .transition(.opacity)
+                    }
+                }
             }
+            .onHover { isHovering = $0 }
+            .animation(.easeInOut(duration: 0.15), value: isHovering)
+            .animation(.easeInOut(duration: 0.15), value: copied)
         }
     }
 

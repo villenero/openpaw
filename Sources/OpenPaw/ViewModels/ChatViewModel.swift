@@ -25,9 +25,9 @@ final class ChatViewModel {
         self.modelContext = modelContext
     }
 
-    func send(text: String, in conversation: Conversation) {
+    func send(text: String, attachments: [PendingAttachment] = [], in conversation: Conversation) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         guard gateway.isConnected else {
             error = "Not connected to server"
             return
@@ -35,12 +35,30 @@ final class ChatViewModel {
 
         error = nil
 
+        // Convert pending attachments to MediaItems for display in the user bubble
+        let mediaItems: [MediaItem] = attachments.map { att in
+            if att.isImage {
+                .imageBase64(data: att.data, mediaType: att.mimeType)
+            } else {
+                .audioBase64(data: att.data, mediaType: att.mimeType)
+            }
+        }
+
         // Add user message
-        let userMsg = Message(role: "user", content: trimmed)
+        let userMsg = Message(role: "user", content: trimmed, media: mediaItems)
         userMsg.conversation = conversation
         conversation.messages.append(userMsg)
         conversation.updatedAt = .now
         try? modelContext.save()
+
+        // Build gateway attachments
+        let gwAttachments = attachments.map { att in
+            GatewayService.Attachment(
+                type: att.isImage ? "image" : "audio",
+                mimeType: att.mimeType,
+                content: att.data.base64EncodedString()
+            )
+        }
 
         // Stream response
         isStreaming = true
@@ -69,11 +87,26 @@ final class ChatViewModel {
 
         Task {
             do {
-                let response = try await gateway.sendChatMessage(trimmed)
-                if response.ok != true {
-                    let msg = response.error?.message ?? "Send failed"
-                    self.error = msg
-                    self.isStreaming = false
+                if gwAttachments.count <= 1 {
+                    // Single or no attachment — send normally
+                    let response = try await gateway.sendChatMessage(trimmed, attachments: gwAttachments)
+                    if response.ok != true {
+                        let msg = response.error?.message ?? "Send failed"
+                        self.error = msg
+                        self.isStreaming = false
+                    }
+                } else {
+                    // Multiple attachments — send sequentially to work around gateway bug
+                    for (index, attachment) in gwAttachments.enumerated() {
+                        let messageText = index == 0 ? trimmed : ""
+                        let response = try await gateway.sendChatMessage(messageText, attachments: [attachment])
+                        if response.ok != true {
+                            let msg = response.error?.message ?? "Send failed"
+                            self.error = msg
+                            self.isStreaming = false
+                            return
+                        }
+                    }
                 }
             } catch {
                 self.error = error.localizedDescription

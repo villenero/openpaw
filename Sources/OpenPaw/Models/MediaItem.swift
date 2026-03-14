@@ -36,3 +36,20 @@ struct ParsedContent {
     var text: String = ""
     var media: [MediaItem] = []
 }
+
+/// An attachment staged in the input before sending.
+struct PendingAttachment: Identifiable {
+    let id = UUID()
+    let data: Data
+    let mimeType: String
+    let fileName: String
+
+    var isImage: Bool { mimeType.hasPrefix("image/") }
+    var isAudio: Bool { mimeType.hasPrefix("audio/") }
+
+    /// Size in bytes
+    var size: Int { data.count }
+
+    /// True if the file exceeds the 10 MB limit
+    var isOversized: Bool { data.count > 10 * 1024 * 1024 }
+}

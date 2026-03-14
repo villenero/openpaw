@@ -24,13 +24,20 @@ struct OpenPawApp: App {
         }
     }
 
+    @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.auto.rawValue
+
     var body: some Scene {
         WindowGroup {
             ContentView(gateway: gateway)
+                .preferredColorScheme(AppearanceMode(rawValue: appearanceMode)?.colorScheme)
                 .task {
                     if !gateway.serverURL.isEmpty && !gateway.gatewayToken.isEmpty {
                         await gateway.connect()
                     }
+                }
+                .onAppear {
+                    // Beta: show About panel on every launch
+                    showAboutPanel()
                 }
         }
         .modelContainer(container)
@@ -38,18 +45,7 @@ struct OpenPawApp: App {
             CommandGroup(replacing: .newItem) { }
             CommandGroup(replacing: .appInfo) {
                 Button("About OpenPaw") {
-                    NSApp.orderFrontStandardAboutPanel(options: [
-                        .applicationName: "OpenPaw",
-                        .applicationVersion: "1.0",
-                        .version: "Build: \(BuildInfo.timestamp)",
-                        .credits: NSAttributedString(
-                            string: "Built: \(BuildInfo.timestamp)",
-                            attributes: [
-                                .font: NSFont.systemFont(ofSize: 11),
-                                .foregroundColor: NSColor.secondaryLabelColor
-                            ]
-                        )
-                    ])
+                    showAboutPanel()
                 }
             }
         }
@@ -57,5 +53,20 @@ struct OpenPawApp: App {
         Settings {
             SettingsView(gateway: gateway)
         }
+    }
+
+    private func showAboutPanel() {
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "OpenPaw",
+            .applicationVersion: "1.0 Beta",
+            .version: "Build: \(BuildInfo.timestamp)",
+            .credits: NSAttributedString(
+                string: "Built: \(BuildInfo.timestamp)",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .foregroundColor: NSColor.secondaryLabelColor
+                ]
+            )
+        ])
     }
 }

@@ -164,3 +164,12 @@ swift run OpenPaw
 - SwiftData for persistence (already set up)
 - No external dependencies unless absolutely necessary
 - Target macOS 14+ only
+
+## Git Discipline — MANDATORY
+1. **Commit before starting:** If there are uncommitted changes, commit them first with message `wip: save state before <task>`
+2. **Stay in scope:** Only touch the files/functions specified in the task. Do NOT refactor, reorganize, or "improve" unrelated code.
+3. **Commit after completing:** Commit your changes with a descriptive message: `feat:`, `fix:`, `refactor:` prefix
+4. **Build before committing:** Always run `swift build` and verify it succeeds before committing
+5. **One task = one commit:** Don't mix multiple unrelated changes
+
+If something breaks, we need to be able to `git revert` cleanly. No exceptions.

@@ -3,6 +3,7 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general = "General"
     case appearance = "Appearance"
+    case debug = "Debug"
 
     var id: String { rawValue }
 
@@ -10,6 +11,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .appearance: "paintbrush"
+        case .debug: "ladybug"
         }
     }
 }
@@ -30,6 +32,12 @@ struct SettingsView: View {
                     Label(SettingsTab.appearance.rawValue, systemImage: SettingsTab.appearance.icon)
                 }
                 .tag(SettingsTab.appearance)
+
+            DebugSettingsView(gateway: gateway)
+                .tabItem {
+                    Label(SettingsTab.debug.rawValue, systemImage: SettingsTab.debug.icon)
+                }
+                .tag(SettingsTab.debug)
         }
         .frame(width: 500, height: 400)
     }
@@ -100,15 +108,6 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            Section("Debug Log") {
-                ScrollView {
-                    Text(gateway.debugLog.isEmpty ? "No activity yet" : gateway.debugLog)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                }
-                .frame(height: 150)
-            }
         }
         .formStyle(.grouped)
         .onAppear {
@@ -120,13 +119,48 @@ struct GeneralSettingsView: View {
 
 // MARK: - Appearance
 
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case auto = "Auto"
+    case light = "Light"
+    case dark = "Dark"
+
+    var id: String { rawValue }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .auto: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .auto: "circle.lefthalf.filled"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
+}
+
 struct AppearanceSettingsView: View {
+    @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.auto.rawValue
     @AppStorage("userBubbleColor") private var userBubbleHex: String = BubbleColors.defaultUserHex
 
     @State private var userColor: Color = BubbleColors.defaultUser
 
     var body: some View {
         Form {
+            Section("Color Scheme") {
+                Picker("Appearance", selection: $appearanceMode) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Label(mode.rawValue, systemImage: mode.icon)
+                            .tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+
             Section("Chat Bubbles") {
                 ColorPicker("User bubble color", selection: $userColor, supportsOpacity: false)
                     .onChange(of: userColor) {
@@ -143,5 +177,47 @@ struct AppearanceSettingsView: View {
         .onAppear {
             userColor = Color(hex: userBubbleHex) ?? BubbleColors.defaultUser
         }
+    }
+}
+
+// MARK: - Debug
+
+struct DebugSettingsView: View {
+    @Bindable var gateway: GatewayService
+
+    var body: some View {
+        Form {
+            Section("Connection") {
+                HStack {
+                    Circle()
+                        .fill(gateway.isConnected ? .green : .red)
+                        .frame(width: 10, height: 10)
+                    Text(gateway.isConnected ? "Connected" : "Disconnected")
+                }
+
+                if let error = gateway.connectionError {
+                    Text(error)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Section("Debug Log") {
+                ScrollView {
+                    Text(gateway.debugLog.isEmpty ? "No activity yet" : gateway.debugLog)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(height: 220)
+
+                Button("Clear Log") {
+                    gateway.debugLog = ""
+                }
+                .font(.caption)
+            }
+        }
+        .formStyle(.grouped)
     }
 }

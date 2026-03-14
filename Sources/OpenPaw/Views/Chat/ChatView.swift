@@ -13,6 +13,7 @@ struct ChatView: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var contentHeight: CGFloat = 0
     @State private var scrollViewHeight: CGFloat = 0
+    @State private var pendingEditText: String = ""
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -42,12 +43,13 @@ struct ChatView: View {
                 MessageInputView(
                     isStreaming: viewModel?.isStreaming ?? false,
                     isConnected: gateway.isConnected,
-                    onSend: { text in
-                        viewModel?.send(text: text, in: conversation)
+                    onSend: { text, attachments in
+                        viewModel?.send(text: text, attachments: attachments, in: conversation)
                     },
                     onStop: {
                         viewModel?.stop()
-                    }
+                    },
+                    pendingEditText: $pendingEditText
                 )
             }
             .frame(minWidth: 400, maxWidth: 800)
@@ -80,7 +82,10 @@ struct ChatView: View {
                         MessageBubbleView(
                             role: message.role,
                             content: message.content,
-                            media: message.mediaItems
+                            media: message.mediaItems,
+                            onEdit: message.role == "user" ? {
+                                pendingEditText = message.content
+                            } : nil
                         )
                         .id(message.id)
                     }
@@ -181,11 +186,22 @@ struct ChatView: View {
     }
 
     private func updateIsAtBottom() {
-        // In flipped scroll: scrollOffset is minY of content in scroll coordinate space
-        // At bottom (newest messages visible): scrollOffset ≈ 0 or small negative
-        // Scrolled up (older messages): scrollOffset becomes more positive
+        // If all content fits in the scroll view, we're always "at bottom"
+        if contentHeight <= scrollViewHeight {
+            if !isAtBottom { isAtBottom = true }
+            return
+        }
+        // Flipped scroll: the view is inverted with scaleEffect(y: -1).
+        // scrollOffset = content minY in scroll coordinate space.
+        // Visually at bottom (newest messages): scrollOffset is a large negative
+        //   because content top is far above the viewport in flipped space.
+        // Visually at top (oldest messages): scrollOffset ≈ 0.
+        // "At bottom" means the overflow is nearly fully scrolled:
+        //   scrollOffset ≈ -(contentHeight - scrollViewHeight)
+        let overflow = contentHeight - scrollViewHeight
+        let distanceFromBottom = abs(scrollOffset + overflow)
         let threshold: CGFloat = 50
-        let atBottom = scrollOffset >= -threshold
+        let atBottom = distanceFromBottom < threshold
         if atBottom != isAtBottom {
             isAtBottom = atBottom
         }

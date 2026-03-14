@@ -148,12 +148,31 @@ final class GatewayService {
 
     // MARK: - Chat
 
-    func sendChatMessage(_ message: String, sessionKey: String = "agent:main:main") async throws -> IncomingFrame {
-        try await sendRequest(method: "chat.send", params: [
+    struct Attachment {
+        let type: String      // "image" or "audio"
+        let mimeType: String  // e.g. "image/png", "audio/mpeg"
+        let content: String   // raw base64 (no data URL prefix)
+    }
+
+    func sendChatMessage(_ message: String, attachments: [Attachment] = [], sessionKey: String = "agent:main:main") async throws -> IncomingFrame {
+        var params: [String: AnyCodable] = [
             "message": AnyCodable(message),
             "sessionKey": AnyCodable(sessionKey),
             "idempotencyKey": AnyCodable(UUID().uuidString)
-        ])
+        ]
+
+        if !attachments.isEmpty {
+            let encoded = attachments.map { att -> [String: Any] in
+                [
+                    "type": att.type,
+                    "mimeType": att.mimeType,
+                    "content": att.content
+                ]
+            }
+            params["attachments"] = AnyCodable(encoded as [Any])
+        }
+
+        return try await sendRequest(method: "chat.send", params: params)
     }
 
     func getChatHistory(sessionKey: String = "agent:main:main") async throws -> IncomingFrame {
